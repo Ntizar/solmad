@@ -6078,5 +6078,15 @@
     "minutesLeft": 84,
     "directMinutes": 84,
     "updatedAt": "2026-05-04T12:43:27.762Z"
+  },
+  {
+    "id": 19207,
+    "key": "19207|125|915",
+    "sunNow": true,
+    "altitudeDeg": 62.42358217543168,
+    "azimuthDeg": 211.40978647438624,
+    "minutesLeft": 360,
+    "directMinutes": 360,
+    "updatedAt": "2026-05-04T12:43:29.337Z"
   }
 ]
