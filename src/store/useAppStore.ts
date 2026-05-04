@@ -8,6 +8,13 @@ interface Filters {
   onlyOpenNow: boolean;
 }
 
+interface SolarProgress {
+  phase: 'idle' | 'buildings' | 'solar' | 'selected';
+  done: number;
+  total: number;
+  message: string;
+}
+
 interface State {
   terrazas: Terraza[];
   buildings: BuildingPoly[];
@@ -16,8 +23,10 @@ interface State {
   quickSun: Uint8Array | null;
   ribbonCache: Map<string, number[]>;
   visibleIds: number[];
+  visibleBbox: [number, number, number, number] | null;
   sunStateCache: Map<string, SunState>;
   selectedPending: boolean;
+  solarProgress: SolarProgress;
   selectedDate: Date;        // hora "ahora mismo" o la elegida en el slider
   isLive: boolean;           // true = sigue al reloj real
   selectedId: number | null;
@@ -42,9 +51,11 @@ interface State {
   setQuickSun: (u: Uint8Array | null) => void;
   setRibbonCache: (key: string, ribbon: number[]) => void;
   setVisibleIds: (ids: number[]) => void;
+  setVisibleBbox: (bbox: [number, number, number, number] | null) => void;
   setSunStateCache: (key: string, state: SunState) => void;
   setSunStateCacheEntries: (entries: Array<[string, SunState]>) => void;
   setSelectedPending: (v: boolean) => void;
+  setSolarProgress: (progress: SolarProgress) => void;
   resetSunStates: () => void;
   setUserLocation: (loc: { lat: number; lng: number } | null) => void;
   setGeoStatus: (s: 'idle' | 'asking' | 'granted' | 'denied' | 'unavailable') => void;
@@ -57,8 +68,10 @@ export const useAppStore = create<State>((set) => ({
   quickSun: null,
   ribbonCache: new Map(),
   visibleIds: [],
+  visibleBbox: null,
   sunStateCache: new Map(),
   selectedPending: false,
+  solarProgress: { phase: 'idle', done: 0, total: 0, message: '' },
   selectedDate: new Date(),
   isLive: true,
   selectedId: null,
@@ -96,6 +109,7 @@ export const useAppStore = create<State>((set) => ({
     return { ribbonCache: next };
   }),
   setVisibleIds: (ids) => set({ visibleIds: ids }),
+  setVisibleBbox: (bbox) => set({ visibleBbox: bbox }),
   setSunStateCache: (key, state) => set((s) => {
     const next = new Map(s.sunStateCache);
     next.set(key, state);
@@ -107,6 +121,7 @@ export const useAppStore = create<State>((set) => ({
     return { sunStateCache: next };
   }),
   setSelectedPending: (v) => set({ selectedPending: v }),
+  setSolarProgress: (progress) => set({ solarProgress: progress }),
   resetSunStates: () => set({ sunStates: new Map(), quickSun: null }),
   setUserLocation: (loc) => set({ userLocation: loc }),
   setGeoStatus: (s) => set({ geoStatus: s })

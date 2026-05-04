@@ -23,7 +23,7 @@ export function ContributionForm({ terraza }: { terraza: Terraza }) {
     setStatus('saving');
     setMessage(null);
     try {
-      await sendContribution({
+      const saved = await sendContribution({
         terraceId: terraza.id,
         terraceName: terraza.name,
         contributorName: contributorName.trim(),
@@ -34,7 +34,7 @@ export function ContributionForm({ terraza }: { terraza: Terraza }) {
         comment: comment.trim() || undefined
       });
       setStatus('saved');
-      setMessage('Guardado. Madrid te debe una caña moral.');
+      setMessage(saved.reviewUrl ? 'Enviado a revisión. David recibirá aviso para aprobarlo.' : 'Enviado a revisión. Madrid te debe una caña moral.');
       setContributorName('');
       setBeerBrand('');
       setPrice('');
@@ -130,7 +130,7 @@ export function ContributionForm({ terraza }: { terraza: Terraza }) {
         <p className={`mt-2 text-xs ${status === 'error' ? 'text-red-200' : 'text-sun-100'}`}>{message}</p>
       )}
       <p className="mt-2 text-[10px] text-paper/40 leading-relaxed">
-        Se guarda como dato comunitario. Nada de tarjetas, solo sabiduria cervecera con nombre propio.
+        Se envia a revision antes de publicarse. Nada de tarjetas, solo sabiduria cervecera con nombre propio.
       </p>
     </form>
   );

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { flyToUser } from './MapView';
+import { locationHelpText, locationSettingsUrl } from '../lib/platform';
 
 const GEO_CACHE_KEY = 'solmad:userLocation:v1';
 
@@ -31,7 +32,7 @@ export function LocationButton() {
     const onErrorFinal = (err: GeolocationPositionError) => {
       setGeoStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable');
       setErrMsg(
-        err.code === err.PERMISSION_DENIED ? 'Permiso bloqueado. iPhone: Ajustes > Safari > Ubicacion > Permitir'
+        err.code === err.PERMISSION_DENIED ? locationHelpText()
         : err.code === err.POSITION_UNAVAILABLE ? 'Sin señal GPS'
         : err.code === err.TIMEOUT ? 'Tardó demasiado'
         : 'Error de ubicación'
@@ -58,6 +59,12 @@ export function LocationButton() {
       ? 'Buscando…'
       : errMsg ?? 'Usar mi ubicación';
 
+  const openSettings = () => {
+    const url = locationSettingsUrl();
+    if (url) window.location.href = url;
+    else setErrMsg(locationHelpText());
+  };
+
   // Cuando ya tenemos ubicación, MeNowBadge actúa como botón principal de centrado.
   // Ocultamos este en móvil para no chocar con la badge centrada.
   const hideOnMobile = !!userLocation && geoStatus === 'granted';
@@ -68,9 +75,18 @@ export function LocationButton() {
       disabled={geoStatus === 'asking'}
       className={`fixed top-16 right-4 z-30 rounded-full bg-paper/92 text-night-900 border border-night-900/10 shadow-xl backdrop-blur px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white transition disabled:opacity-70 max-w-[78vw] sm:max-w-[55vw] truncate ${hideOnMobile ? 'hidden sm:inline-flex' : ''}`}
       aria-label="Usar mi ubicación"
-      title={errMsg ?? (geoStatus === 'denied' ? 'iPhone: Ajustes > Safari > Ubicación > Permitir, o Ajustes > Privacidad y seguridad > Localización' : undefined)}
+      title={errMsg ?? (geoStatus === 'denied' ? locationHelpText() : undefined)}
     >
       ⌖ {label}
+      {geoStatus === 'denied' && (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); openSettings(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') openSettings(); }}
+          className="ml-2 underline decoration-night-900/30"
+        >Ayuda</span>
+      )}
     </button>
   );
 }

@@ -14,12 +14,12 @@ https://solmad.vercel.app
 
 - Muestra mas de **6.200 terrazas abiertas** del Ayuntamiento de Madrid.
 - Calcula si una terraza tiene **sol directo ahora mismo**.
-- Estima cuanto sol le queda durante el dia.
+- Estima cuanto sol le queda durante el dia, empezando por el bar abierto, las terrazas visibles y las cercanas.
 - Permite cambiar la hora con slider, presets y botones rapidos de `-15` / `+15`.
 - Distingue terrazas con sol, sombra y noche.
 - Abre una ficha con horario, mesas, sillas, superficie y ruta en Google Maps.
 - Tiene boton **Sorpresa** para dejar que el destino hostelero decida.
-- Pide ubicacion para encontrar opciones cerca de ti.
+- Pide ubicacion solo con gesto explicito del usuario para funcionar mejor en iPhone y Android.
 - Usa mapas libres sin tokens ni autenticacion.
 
 Si alguna sombra se equivoca por un toldo, un arbol o una fachada con ganas de protagonismo: calma. Es una primera version presentable, no una tesis doctoral con sombrilla homologada.
@@ -55,7 +55,7 @@ Build de produccion:
 npm run build
 ```
 
-Para que el formulario de aportes guarde precio, marca y nombre en GitHub desde Vercel, define estas variables de entorno en el proyecto:
+Para que el formulario de aportes y la cache solar funcionen desde Vercel, define estas variables de entorno en el proyecto:
 
 ```text
 SOLMAD_GITHUB_TOKEN=token_con_permiso_contents_write
@@ -67,6 +67,8 @@ SUN_CACHE_PATH=data/sun-cache.json
 ```
 
 `SOLMAD_GITHUB_TOKEN` debe ser un secreto de Vercel, nunca codigo cliente. Los endpoints `/api/contribute` y `/api/sun-cache` lo usan para escribir en GitHub mediante la API oficial.
+
+Los aportes de usuarios no entran directos en `main`: se guardan en la rama `solmad/review-contributions` y abren una Pull Request para revisarlos antes de mezclarlos. GitHub envia el aviso al propietario/revisores del repo;.
 
 Para sacarlo: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained token. Dale acceso solo al repo `Ntizar/solmad` y permiso **Contents: Read and write**. Despues pegalo en Vercel como `SOLMAD_GITHUB_TOKEN` en Production, Preview y Development si quieres probarlo todo.
 
@@ -81,11 +83,14 @@ public/terrazas.min.json
 ## Como calcula el sol
 
 1. Carga las terrazas oficiales de Madrid.
-2. Descarga footprints de edificios desde Overpass/OpenStreetMap y los cachea en `localStorage`.
-3. Estima alturas con `height`, `building:levels * 3.2 m` o fallback de `17 m`.
+2. Descarga footprints de edificios desde Overpass/OpenStreetMap por zona visible o bar seleccionado, no todo Madrid de golpe.
+3. Estima alturas con `height`, `building:levels * 3.2 m` o fallback prudente de `10 m`.
 4. Indexa segmentos de fachadas en un grid dentro de un Web Worker.
 5. Para cada terraza traza un rayo hacia el sol y comprueba si algun edificio lo tapa.
 6. Repite en pasos de tiempo para estimar minutos restantes y ritmo solar del dia.
+7. Cachea resultados por terraza, dia del anio y franja de 15 minutos en localStorage y en `data/sun-cache.json` via API.
+
+La app prioriza rendimiento percibido: primero calcula el bar seleccionado, luego las 10 terrazas cercanas a tu ubicacion, despues lo visible en el mapa. El indicador de progreso muestra que fase esta activa.
 
 Traduccion humana: intenta responder si vas a estar al solecito o en modo bufanda interior.
 
@@ -93,11 +98,12 @@ Traduccion humana: intenta responder si vas a estar al solecito o en modo bufand
 
 ## Estado actual
 
-- Listo para una primera presentacion.
+- Listo para iteracion publica controlada.
 - Mapa estable con Leaflet y tiles sin autenticacion.
 - Hora visible sobre el mapa con cambios rapidos de `-15` y `+15` minutos.
-- Calculo de sombras aproximado, suficientemente majo para decidir donde sentarse.
-- Pendiente para futuras versiones: arbolado, toldos, sombrillas reales, terrazas favoritas, PWA y modo "necesito vitamina D ya".
+- Calculo de sombras aproximado por edificios OSM, con cache y progreso visible.
+- Limitaciones: no considera arbolado real, toldos, sombrillas, soportales ni sombras interiores. Overpass puede devolver menos edificios si la red/API esta lenta; por eso se trabaja por zona y se cachea.
+- Pendiente para futuras versiones: precalculo offline diario, arbolado, toldos, favoritas, PWA y modo "necesito vitamina D ya".
 
 ---
 

@@ -17,5 +17,5 @@ export async function sendContribution(payload: ContributionPayload) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.error || 'No se pudo guardar la aportacion');
-  return data as { ok: true; savedAt: string };
+  return data as { ok: true; savedAt: string; reviewUrl?: string };
 }

@@ -9,8 +9,9 @@ import { SurpriseButton } from './components/SurpriseButton';
 import { FloatingTimeControl } from './components/FloatingTimeControl';
 import { LocationButton } from './components/LocationButton';
 import { MeNowBadge } from './components/MeNowBadge';
+import { SolarProgressBadge } from './components/SolarProgressBadge';
 import { useAppStore } from './store/useAppStore';
-import { loadTerrazas, bbox } from './lib/terrazas';
+import { loadTerrazas } from './lib/terrazas';
 import { fetchBuildings } from './lib/buildings';
 import { shadowsApi, ribbonApi } from './workers/shadowsClient';
 import type { Terraza } from './lib/types';
@@ -57,12 +58,14 @@ export function App() {
   const setQuickSun = useAppStore((s) => s.setQuickSun);
   const resetSunStates = useAppStore((s) => s.resetSunStates);
   const visibleIds = useAppStore((s) => s.visibleIds);
+  const visibleBbox = useAppStore((s) => s.visibleBbox);
   const selectedId = useAppStore((s) => s.selectedId);
   const userLocation = useAppStore((s) => s.userLocation);
   const sunStateCache = useAppStore((s) => s.sunStateCache);
   const setSunStateCacheEntries = useAppStore((s) => s.setSunStateCacheEntries);
   const setRibbonCache = useAppStore((s) => s.setRibbonCache);
   const setSelectedPending = useAppStore((s) => s.setSelectedPending);
+  const setSolarProgress = useAppStore((s) => s.setSolarProgress);
   const setGeoStatus = useAppStore((s) => s.setGeoStatus);
   const selectedDate = useAppStore((s) => s.selectedDate);
   const [appStarted, setAppStarted] = useState(false);
@@ -72,6 +75,7 @@ export function App() {
   const fullSeqRef = useRef(0);
   const quickSeqRef = useRef(0);
   const selectedSeqRef = useRef(0);
+  const buildingSeqRef = useRef(0);
 
   // Hidrata ubicación concedida/caché. La petición nueva queda solo en LocationButton.
   useEffect(() => {
@@ -112,40 +116,62 @@ export function App() {
     setAppStarted(true);
   };
 
-  // 1) Cargar terrazas y luego edificios + worker
+  function targetBbox() {
+    const selected = selectedId != null ? terrazas.find((t) => t.id === selectedId) : null;
+    const center = selected ?? userLocation;
+    if (center) {
+      const pad = selected ? 0.006 : 0.012;
+      return [center.lat - pad, center.lng - pad, center.lat + pad, center.lng + pad] as [number, number, number, number];
+    }
+    if (visibleBbox) return visibleBbox;
+    return null;
+  }
+
+  // 1) Cargar terrazas. Los edificios se descargan por zona, no todo Madrid.
   useEffect(() => {
     (async () => {
       const ts = await loadTerrazas();
       setTerrazas(ts);
+    })();
+  }, [setTerrazas]);
 
-      const bb = bbox(ts);
-      // Cubre todos los distritos con terrazas. Antes estaba recortado a centro/M-30
-      // y barrios como Villaverde calculaban sin edificios alrededor.
-      const south = Math.max(40.30, bb.minLat - 0.006);
-      const north = Math.min(40.55, bb.maxLat + 0.006);
-      const west = Math.max(-3.85, bb.minLng - 0.006);
-      const east = Math.min(-3.52, bb.maxLng + 0.006);
-      const originLng = (west + east) / 2;
-      const originLat = (south + north) / 2;
-
+  useEffect(() => {
+    if (terrazas.length === 0) return;
+    const bboxTarget = targetBbox();
+    if (!bboxTarget) return;
+    const seq = ++buildingSeqRef.current;
+    const [southRaw, westRaw, northRaw, eastRaw] = bboxTarget;
+    const south = Math.max(40.30, southRaw - 0.004);
+    const north = Math.min(40.55, northRaw + 0.004);
+    const west = Math.max(-3.85, westRaw - 0.004);
+    const east = Math.min(-3.52, eastRaw + 0.004);
+    const originLng = (west + east) / 2;
+    const originLat = (south + north) / 2;
+    setBuildingsLoaded(false);
+    setSolarProgress({ phase: 'buildings', done: 1, total: 4, message: selectedId ? 'Preparando sombras de este bar' : 'Cargando sombras de la zona' });
+    (async () => {
       const api = shadowsApi();
       try {
         const buildings = await fetchBuildings([south, west, north, east]);
+        if (seq !== buildingSeqRef.current) return;
+        setSolarProgress({ phase: 'buildings', done: 3, total: 4, message: 'Indexando edificios cercanos' });
         setBuildings(buildings);
         await api.setBuildings(buildings, originLng, originLat);
-        // Mismo dataset al worker dedicado a ribbons (no comparte memoria con
-        // Comlink, pero el coste es asumible y el ribbon ya no espera al masivo)
         await ribbonApi().setBuildings(buildings, originLng, originLat);
+        if (seq !== buildingSeqRef.current) return;
         setBuildingsLoaded(true);
+        setSolarProgress({ phase: 'solar', done: 0, total: 1, message: 'Calculando terrazas cercanas' });
       } catch (err) {
         console.warn('[solmad] Overpass falló, usando modo sin sombras:', err);
+        if (seq !== buildingSeqRef.current) return;
         setBuildings([]);
         await api.setBuildings([], originLng, originLat);
         await ribbonApi().setBuildings([], originLng, originLat);
-        setBuildingsLoaded(true); // seguimos: todo "soleado" si la altitud > 0
+        setBuildingsLoaded(true);
+        setSolarProgress({ phase: 'solar', done: 0, total: 1, message: 'Calculando sin edificios OSM' });
       }
     })();
-  }, [setTerrazas, setBuildings, setBuildingsLoaded]);
+  }, [terrazas, visibleBbox, selectedId, userLocation, setBuildings, setBuildingsLoaded, setSolarProgress]);
 
   const computeTargets = () => {
     const visibleSet = new Set(visibleIds);
@@ -177,6 +203,7 @@ export function App() {
         if (globalIndex >= 0) u[globalIndex] = partial[index];
       });
       setQuickSun(u);
+      setSolarProgress({ phase: 'solar', done: Math.min(targets.length, QUICK_LIMIT), total: Math.min(targets.length, QUICK_LIMIT), message: 'Terrazas cercanas listas' });
     }, 100);
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
   }, [selectedDate, terrazas, buildingsLoaded, visibleIds, selectedId, userLocation, setQuickSun]);
@@ -197,6 +224,7 @@ export function App() {
         if (cached) cachedEntries.push([t.id, cached]);
         else missing.push(t);
       }
+      setSolarProgress({ phase: 'solar', done: cachedEntries.length, total: targets.length, message: 'Reusando cache solar' });
       if (cachedEntries.length) mergeSunStates(cachedEntries);
       if (missing.length) {
         const remoteRows = await fetchRemoteSunCache(missing.map((t) => sunCacheKey(t.id, selectedDate)));
@@ -225,6 +253,7 @@ export function App() {
       setSunStateCacheEntries(cacheRows.map((row) => [row.key, row]));
       mergeSunStates(entries);
       saveRemoteSunCache(cacheRows.slice(0, 20));
+      setSolarProgress({ phase: 'idle', done: targets.length, total: targets.length, message: '' });
     }, 260);
     return () => { if (fullDebRef.current) clearTimeout(fullDebRef.current); };
   }, [selectedDate, terrazas, buildingsLoaded, visibleIds, selectedId, userLocation, sunStateCache, mergeSunStates, setSunStateCacheEntries]);
@@ -242,6 +271,7 @@ export function App() {
     const dayKey = `${terraza.id}|${selectedDate.toDateString()}`;
     const cached = sunStateCache.get(stateKey) || getLocalSunCache(stateKey);
     setSelectedPending(!cached);
+    setSolarProgress({ phase: 'selected', done: cached ? 1 : 0, total: 1, message: cached ? 'Bar listo desde cache' : 'Calculando este bar' });
     if (cached) mergeSunStates([[terraza.id, cached]]);
     (async () => {
       try {
@@ -260,6 +290,7 @@ export function App() {
         useAppStore.getState().updateSunState(terraza.id, { ribbon });
       } finally {
         if (seq === selectedSeqRef.current) setSelectedPending(false);
+        if (seq === selectedSeqRef.current) setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       }
     })();
   }, [selectedId, buildingsLoaded, terrazas, selectedDate, sunStateCache, mergeSunStates, setSunStateCacheEntries, setRibbonCache, setSelectedPending]);
@@ -274,6 +305,7 @@ export function App() {
           <SurpriseButton />
           <LocationButton />
           <MeNowBadge />
+          <SolarProgressBadge />
           <SideList />
           <FloatingTimeControl />
           <DetailPanel />

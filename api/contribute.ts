@@ -7,6 +7,7 @@ const FILE_PATH = process.env.CONTRIBUTIONS_PATH || 'data/contributions.json';
 const TOKEN = process.env.GITHUB_TOKEN || process.env.SOLMAD_GITHUB_TOKEN;
 const CONTENTS_PATH = FILE_PATH.split('/').map(encodeURIComponent).join('/');
 
+
 interface Contribution {
   id: string;
   terraceId: number;
@@ -57,6 +58,35 @@ async function github(path: string, init: RequestInit = {}) {
   return { res, data };
 }
 
+async function ensureBranch(branch: string) {
+  const ref = await github(`/git/ref/heads/${encodeURIComponent(branch)}`);
+  if (ref.res.ok) return;
+  const base = await github(`/git/ref/heads/${encodeURIComponent(BRANCH)}`);
+  if (!base.res.ok) throw new Error('No se pudo leer main');
+  const sha = base.data.object.sha;
+  const create = await github('/git/refs', {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha })
+  });
+  if (!create.res.ok && create.res.status !== 422) throw new Error('No se pudo crear rama de revision');
+}
+
+async function ensurePullRequest(branch: string, contribution: Contribution) {
+  const existing = await github(`/pulls?state=open&head=${encodeURIComponent(`${OWNER}:${branch}`)}&base=${encodeURIComponent(BRANCH)}`);
+  if (existing.res.ok && Array.isArray(existing.data) && existing.data.length > 0) return existing.data[0];
+  const created = await github('/pulls', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Aporte SolMad: ${contribution.terraceName}`,
+      head: branch,
+      base: BRANCH,
+      body: `Revisar aporte comunitario antes de mezclar.\n\nAviso para: ${REVIEW_EMAIL}\n\nTerraza: ${contribution.terraceName}\nID: ${contribution.terraceId}\nUsuario: ${contribution.contributorName}\nMarca: ${contribution.beerBrand}\nPrecio: ${contribution.price} EUR\nSol observado: ${contribution.sunFrom || '?'} - ${contribution.sunTo || '?'}\nComentario: ${contribution.comment || '-'}\n`
+    })
+  });
+  if (!created.res.ok) throw new Error('No se pudo crear PR de revision');
+  return created.data;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return fail(res, 405, 'Metodo no permitido');
   if (!TOKEN) return fail(res, 500, 'Falta SOLMAD_GITHUB_TOKEN en Vercel');
@@ -81,7 +111,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!contribution.terraceName || !contribution.contributorName || !contribution.beerBrand) return fail(res, 400, 'Faltan nombre, terraza o marca');
   if (!Number.isFinite(contribution.price) || contribution.price <= 0 || contribution.price > 20) return fail(res, 400, 'Precio invalido');
 
-  const get = await github(`/contents/${CONTENTS_PATH}?ref=${encodeURIComponent(BRANCH)}`);
+  const reviewBranch = `solmad/review-contributions`;
+  await ensureBranch(reviewBranch);
+
+  const get = await github(`/contents/${CONTENTS_PATH}?ref=${encodeURIComponent(reviewBranch)}`);
   let sha: string | undefined;
   let rows: Contribution[] = [];
   if (get.res.ok && get.data?.content) {
@@ -99,10 +132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: `Add SolMad contribution for terraza ${contribution.terraceId}`,
       content: encodeBase64(`${JSON.stringify(rows, null, 2)}\n`),
       sha,
-      branch: BRANCH
+      branch: reviewBranch
     })
   });
 
   if (!put.res.ok) return fail(res, 502, 'GitHub no dejo guardar el aporte');
-  return res.status(200).json({ ok: true, savedAt: contribution.createdAt });
+  const pr = await ensurePullRequest(reviewBranch, contribution);
+  return res.status(200).json({ ok: true, savedAt: contribution.createdAt, reviewUrl: pr.html_url });
 }

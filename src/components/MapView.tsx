@@ -104,6 +104,7 @@ export function MapView() {
   const setSelectedId = useAppStore((s) => s.setSelectedId);
   const setHoveredId = useAppStore((s) => s.setHoveredId);
   const setVisibleIds = useAppStore((s) => s.setVisibleIds);
+  const setVisibleBbox = useAppStore((s) => s.setVisibleBbox);
   const userLocation = useAppStore((s) => s.userLocation);
 
   const [tilesLoaded, setTilesLoaded] = useState(false);
@@ -233,8 +234,8 @@ export function MapView() {
     if (!map || !layer) return;
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const MAX_DRAW = isMobile ? 220 : 900;
-    const MIN_ZOOM_FOR_SHADOWS = isMobile ? 14 : 13;
+    const MAX_DRAW = isMobile ? 700 : 1800;
+    const MIN_ZOOM_FOR_SHADOWS = isMobile ? 13 : 12;
     let rafId = 0;
     let pending = false;
     // Renderer canvas dedicado: mucho más fluido en móvil que SVG con cientos de polígonos
@@ -249,11 +250,10 @@ export function MapView() {
       const { az, alt } = sunAt(selectedDate, center.lat, center.lng);
       if (alt <= 1) return;
 
-      const bounds = map.getBounds().pad(isMobile ? 0.1 : 0.28);
+      const bounds = map.getBounds().pad(isMobile ? 0.22 : 0.38);
+      const visibleBuildings = buildings.filter((building) => ringTouchesBounds(building.ring, bounds)).slice(0, MAX_DRAW);
       let drawn = 0;
-      for (const building of buildings) {
-        if (drawn >= MAX_DRAW) break;
-        if (!ringTouchesBounds(building.ring, bounds)) continue;
+      for (const building of visibleBuildings) {
         const poly = shadowLatLngs(building, az, alt);
         if (!poly) continue;
         L.polygon(poly, {
@@ -336,6 +336,7 @@ export function MapView() {
         .slice(0, 300)
         .map((t) => t.id);
       setVisibleIds(ids);
+      setVisibleBbox([bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()]);
     };
     const schedule = () => {
       if (rafId) window.cancelAnimationFrame(rafId);
@@ -347,7 +348,7 @@ export function MapView() {
       map.off('moveend zoomend', schedule);
       if (rafId) window.cancelAnimationFrame(rafId);
     };
-  }, [terrazas, setVisibleIds]);
+  }, [terrazas, setVisibleIds, setVisibleBbox]);
 
   useEffect(() => {
     const layer = userLayerRef.current;
