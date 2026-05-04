@@ -18438,5 +18438,145 @@
     "minutesLeft": 108,
     "directMinutes": 108,
     "updatedAt": "2026-05-04T13:53:05.545Z"
+  },
+  {
+    "id": 645,
+    "key": "645|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.329795029605236,
+    "azimuthDeg": 100.39104784325616,
+    "minutesLeft": 228,
+    "directMinutes": 192,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 3818,
+    "key": "3818|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.329812750199615,
+    "azimuthDeg": 100.39051151575086,
+    "minutesLeft": 288,
+    "directMinutes": 288,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 17540,
+    "key": "17540|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.32749240540089,
+    "azimuthDeg": 100.38555454383868,
+    "minutesLeft": 648,
+    "directMinutes": 648,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 17741,
+    "key": "17741|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.33024578622657,
+    "azimuthDeg": 100.39145387579265,
+    "minutesLeft": 96,
+    "directMinutes": 12,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 18310,
+    "key": "18310|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.3278491014721,
+    "azimuthDeg": 100.38788798646647,
+    "minutesLeft": 648,
+    "directMinutes": 648,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 20348,
+    "key": "20348|125|630",
+    "sunNow": false,
+    "altitudeDeg": 36.33102345878267,
+    "azimuthDeg": 100.38959572301508,
+    "minutesLeft": 204,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 20725,
+    "key": "20725|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.33035135433324,
+    "azimuthDeg": 100.39155955440447,
+    "minutesLeft": 156,
+    "directMinutes": 36,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 20730,
+    "key": "20730|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.329795029605236,
+    "azimuthDeg": 100.39104784325616,
+    "minutesLeft": 228,
+    "directMinutes": 192,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 19522,
+    "key": "19522|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.33035135433324,
+    "azimuthDeg": 100.39155955440447,
+    "minutesLeft": 156,
+    "directMinutes": 36,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 32,
+    "key": "32|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.328503708716674,
+    "azimuthDeg": 100.38739000702122,
+    "minutesLeft": 648,
+    "directMinutes": 648,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 633,
+    "key": "633|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.329909922704346,
+    "azimuthDeg": 100.38755115744408,
+    "minutesLeft": 648,
+    "directMinutes": 648,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 19571,
+    "key": "19571|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.32986455278457,
+    "azimuthDeg": 100.38776694276663,
+    "minutesLeft": 648,
+    "directMinutes": 648,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 17484,
+    "key": "17484|125|630",
+    "sunNow": false,
+    "altitudeDeg": 36.33045911388296,
+    "azimuthDeg": 100.39166019583331,
+    "minutesLeft": 132,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
+  },
+  {
+    "id": 19412,
+    "key": "19412|125|630",
+    "sunNow": true,
+    "altitudeDeg": 36.32979703297468,
+    "azimuthDeg": 100.39044697459406,
+    "minutesLeft": 240,
+    "directMinutes": 240,
+    "updatedAt": "2026-05-04T13:53:07.747Z"
   }
 ]
