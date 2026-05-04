@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "prepare:data": "node scripts/prepare-data.mjs",
-    "dev": "npm run prepare:data && vite",
-    "build": "npm run prepare:data && tsc -b && vite build",
+    "precompute:sun": "node scripts/precompute-sun.mjs",
+    "dev": "npm run prepare:data && npm run precompute:sun && vite",
+    "build": "npm run prepare:data && npm run precompute:sun && tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
