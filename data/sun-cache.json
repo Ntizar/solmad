@@ -16028,5 +16028,15 @@
     "minutesLeft": 0,
     "directMinutes": 0,
     "updatedAt": "2026-05-04T13:29:26.866Z"
+  },
+  {
+    "id": 4980,
+    "key": "4980|125|690",
+    "sunNow": false,
+    "altitudeDeg": 48.12049711963354,
+    "azimuthDeg": 114.32275871126728,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:29:27.719Z"
   }
 ]
