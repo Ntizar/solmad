@@ -19668,5 +19668,35 @@
     "minutesLeft": 672,
     "directMinutes": 672,
     "updatedAt": "2026-05-04T13:54:40.250Z"
+  },
+  {
+    "id": 19399,
+    "key": "19399|125|600",
+    "sunNow": true,
+    "altitudeDeg": 30.67254677276121,
+    "azimuthDeg": 95.01925460580514,
+    "minutesLeft": 672,
+    "directMinutes": 672,
+    "updatedAt": "2026-05-04T13:54:42.035Z"
+  },
+  {
+    "id": 3855,
+    "key": "3855|125|600",
+    "sunNow": true,
+    "altitudeDeg": 30.67247478754911,
+    "azimuthDeg": 95.01919466642255,
+    "minutesLeft": 672,
+    "directMinutes": 672,
+    "updatedAt": "2026-05-04T13:54:42.035Z"
+  },
+  {
+    "id": 1157,
+    "key": "1157|125|600",
+    "sunNow": true,
+    "altitudeDeg": 30.672420944522706,
+    "azimuthDeg": 95.01914582305989,
+    "minutesLeft": 672,
+    "directMinutes": 672,
+    "updatedAt": "2026-05-04T13:54:42.035Z"
   }
 ]
