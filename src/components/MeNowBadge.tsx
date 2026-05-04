@@ -75,7 +75,7 @@ export function MeNowBadge() {
   return (
     <button
       onClick={onClick}
-      className={`fixed left-1/2 -translate-x-1/2 top-[112px] sm:top-16 md:top-4 md:left-auto md:right-4 md:translate-x-0 z-30 rounded-full border backdrop-blur px-3.5 py-2 text-xs sm:text-sm font-medium transition active:scale-95 max-w-[74vw] md:max-w-[260px] truncate ${cls} ${pending ? 'opacity-90' : ''}`}
+      className={`fixed left-1/2 -translate-x-1/2 bottom-[124px] sm:bottom-auto sm:top-16 sm:left-auto sm:right-4 sm:translate-x-0 z-30 rounded-full border backdrop-blur px-3.5 py-2 text-xs sm:text-sm font-medium transition active:scale-95 max-w-[74vw] sm:max-w-[260px] truncate ${cls} ${pending ? 'opacity-90' : ''}`}
       aria-label="Estado del sol en tu ubicación"
       title="Pulsa para centrar el mapa en tu ubicación"
     >

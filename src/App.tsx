@@ -68,6 +68,7 @@ export function App() {
   const setSolarProgress = useAppStore((s) => s.setSolarProgress);
   const setGeoStatus = useAppStore((s) => s.setGeoStatus);
   const selectedDate = useAppStore((s) => s.selectedDate);
+  const buildings = useAppStore((s) => s.buildings);
   const [appStarted, setAppStarted] = useState(false);
 
   const fullDebRef = useRef<number | null>(null);
@@ -201,6 +202,8 @@ export function App() {
   };
 
   // 2) Recálculo ligero: solo terrazas visibles, seleccionada y 10 cercanas.
+  //    Usa heurística (orientación + edificios cercanos) si los edificios están aún cargándose;
+  //    quickFor (rayo real) cuando ya hay índice completo.
   useEffect(() => {
     if (!buildingsLoaded || terrazas.length === 0) return;
     const targets = computeTargets();
@@ -210,7 +213,11 @@ export function App() {
     if (quickDebRef.current) clearTimeout(quickDebRef.current);
     quickDebRef.current = window.setTimeout(async () => {
       const api = shadowsApi();
-      const partial = await api.quickFor(targets, selectedDate.toISOString());
+      const buildingsCount = useAppStore.getState().buildings.length;
+      const useHeuristic = buildingsCount > 0 && buildingsCount < 1500; // pocos tiles aún
+      const partial = useHeuristic
+        ? await api.heuristicFor(targets, selectedDate.toISOString())
+        : await api.quickFor(targets, selectedDate.toISOString());
       if (seq !== quickSeqRef.current) return;
       const u = new Uint8Array(terrazas.length);
       u.fill(255);
@@ -221,7 +228,7 @@ export function App() {
       setQuickSun(u);
     }, 100);
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
-  }, [selectedDate, terrazas, buildingsLoaded, visibleIds, selectedId, userLocation, setQuickSun]);
+  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, setQuickSun]);
 
   // 3) Recálculo completo cacheado por franja de 15 min solo para objetivos prioritarios.
   useEffect(() => {

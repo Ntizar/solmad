@@ -88,7 +88,7 @@ function segIntersectRay(ox: number, oy: number, dx: number, dy: number, len: nu
 
 function isSunlit(originX: number, originY: number, azDeg: number, altDeg: number): boolean {
   if (altDeg <= 0) return false;
-  if (!index || index.grid.size === 0) return true; // sin edificios: cielo abierto
+  if (!index || index.grid.size === 0) return false; // sin edificios cargados: marcar como pendiente, no como sol
   const a = (azDeg * Math.PI) / 180;
   const dx = Math.sin(a), dy = Math.cos(a);
   const tanAlt = Math.tan((altDeg * Math.PI) / 180);
@@ -201,16 +201,69 @@ const api = {
     return { sunNow, altitudeDeg: al, azimuthDeg: az, directMinutes };
   },
 
-  /** Quick: sólo sunNow. Funciona aunque aún no haya edificios cargados (cielo abierto). */
+  /** Quick: sólo sunNow. Estados: 0=sombra, 1=sol, 2=noche, 3=pendiente (sin edificios). */
   quickFor(terrazas: Terraza[], whenIso: string): Uint8Array {
     const when = new Date(whenIso);
     const out = new Uint8Array(terrazas.length);
     const idx = index;
+    const noBuildings = !idx || idx.grid.size === 0;
     for (let i = 0; i < terrazas.length; i++) {
       const t = terrazas[i];
-      const [ox, oy] = idx ? idx.toM(t.lng, t.lat) : [0, 0];
       const { az, al } = sunPos(when, t.lat, t.lng);
-      out[i] = al <= 0 ? 2 : isSunlit(ox, oy, az, al) ? 1 : 0;
+      if (al <= 0) { out[i] = 2; continue; }
+      if (noBuildings) { out[i] = 3; continue; } // pendiente: aún no hay edificios para esta zona
+      const [ox, oy] = idx!.toM(t.lng, t.lat);
+      out[i] = isSunlit(ox, oy, az, al) ? 1 : 0;
+    }
+    return out;
+  },
+
+  /** Heurística rápida basada en orientación y bbox de edificios cercanos.
+   *  Para cada terraza estima sol/sombra mirando si hay edificios altos en el azimut del sol.
+   *  Mucho más rápido que el rayo real, pero buena aproximación inicial. */
+  heuristicFor(terrazas: Terraza[], whenIso: string): Uint8Array {
+    const idx = index;
+    if (!idx || idx.grid.size === 0) return api.quickFor(terrazas, whenIso);
+    const when = new Date(whenIso);
+    const out = new Uint8Array(terrazas.length);
+    const SEARCH_M = 80; // mirar edificios en 80m a la redonda
+    for (let i = 0; i < terrazas.length; i++) {
+      const t = terrazas[i];
+      const { az: azDeg, al: altDeg } = sunPos(when, t.lat, t.lng);
+      if (altDeg <= 0) { out[i] = 2; continue; }
+      const [ox, oy] = idx.toM(t.lng, t.lat);
+      // ángulo del sol respecto al norte; vector hacia el sol = (sin az, cos az)
+      const azRad = (azDeg * Math.PI) / 180;
+      const sx = Math.sin(azRad), sy = Math.cos(azRad);
+      const tanAlt = Math.tan((altDeg * Math.PI) / 180);
+      // Recorre celdas en un radio SEARCH_M y mide si hay altura suficiente para tapar el sol
+      let blocked = false;
+      const c = idx.cell;
+      const cells = Math.ceil(SEARCH_M / c);
+      const baseCx = Math.floor(ox / c), baseCy = Math.floor(oy / c);
+      const token = ++idx.visitToken;
+      for (let dx = -cells; dx <= cells && !blocked; dx++) {
+        for (let dy = -cells; dy <= cells && !blocked; dy++) {
+          const arr = idx.grid.get((baseCx + dx) + ',' + (baseCy + dy));
+          if (!arr) continue;
+          for (const seg of arr) {
+            if (seg.tag === token) continue;
+            seg.tag = token;
+            // Centro del segmento como punto representativo
+            const mx = (seg.ax + seg.bx) / 2 - ox;
+            const my = (seg.ay + seg.by) / 2 - oy;
+            const dist = Math.hypot(mx, my);
+            if (dist > SEARCH_M || dist < 1) continue;
+            // ¿Está en la dirección del sol? Producto escalar con el vector solar.
+            const dot = (mx * sx + my * sy) / dist;
+            if (dot < 0.5) continue; // fuera del cono de ±60º hacia el sol
+            // Altura necesaria para tapar el sol a esta distancia
+            const need = dist * tanAlt;
+            if (seg.h > need + 1) { blocked = true; break; }
+          }
+        }
+      }
+      out[i] = blocked ? 0 : 1;
     }
     return out;
   }

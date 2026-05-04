@@ -73,7 +73,7 @@ export function LocationButton() {
     <button
       onClick={() => locate()}
       disabled={geoStatus === 'asking'}
-      className={`fixed top-16 right-4 z-30 rounded-full bg-paper/92 text-night-900 border border-night-900/10 shadow-xl backdrop-blur px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white transition disabled:opacity-70 max-w-[78vw] sm:max-w-[55vw] truncate ${hideOnMobile ? 'hidden sm:inline-flex' : ''}`}
+      className={`fixed top-16 left-4 z-30 rounded-full bg-paper/92 text-night-900 border border-night-900/10 shadow-xl backdrop-blur px-4 py-2 text-xs sm:text-sm font-medium hover:bg-white transition disabled:opacity-70 max-w-[78vw] sm:max-w-[55vw] truncate ${hideOnMobile ? 'hidden sm:inline-flex' : ''}`}
       aria-label="Usar mi ubicación"
       title={errMsg ?? (geoStatus === 'denied' ? locationHelpText() : undefined)}
     >

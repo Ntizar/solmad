@@ -315,7 +315,8 @@ export function MapView() {
       const marker = terraceMarkersRef.current.get(terraza.id);
       if (!marker) return;
       const rawState = quickSun ? quickSun[index] : 255;
-      const state = rawState === 255 ? -1 : rawState;
+      // 0=sombra, 1=sol, 2=noche, 3=pendiente. 255=sin dato.
+      const state = (rawState === 255 || rawState === 3) ? -1 : rawState;
       if (markerStatesRef.current.get(terraza.id) === state) return;
       markerStatesRef.current.set(terraza.id, state);
       (marker.options as any).sunny = state === 1;
