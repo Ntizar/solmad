@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { SunRhythm } from './SunRhythm';
 import { ribbonApi } from '../workers/shadowsClient';
 import { ContributionForm } from './ContributionForm';
+import { getMadridWeather, cloudHint, cloudEmoji } from '../lib/weather';
 
 function fmtHM(min: number) {
   if (min <= 0) return '0 min';
@@ -75,6 +76,14 @@ export function DetailPanel() {
   }, [t, buildingsLoaded, dayKey, selectedDate, updateSunState, setRibbonCache, ribbonCache, localRibbon?.key]);
 
   const ribbonToShow = localRibbon?.ribbon ?? sun?.ribbon;
+
+  // Cobertura nubosa actual (cache 30 min)
+  const [cloudCover, setCloudCover] = useState<number | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    getMadridWeather().then((w) => { if (!cancel && w) setCloudCover(w.cloudCover); });
+    return () => { cancel = true; };
+  }, []);
 
   // Estado humano: prioriza quickSun (instantáneo) sobre el bulk (debounced 600ms)
   const status = (() => {
@@ -151,6 +160,11 @@ export function DetailPanel() {
                   <>Sol directo hasta aprox. <strong>{fmtTime(sunUntil)}</strong>.</>
                 )}
               </p>
+              {sunNowEffective && cloudHint(cloudCover) && (
+                <p className={`text-xs mt-2 ${status.cls.includes('night-900') ? 'text-night-900/70' : 'text-paper/70'}`}>
+                  {cloudEmoji(cloudCover)} {cloudHint(cloudCover)}
+                </p>
+              )}
             </div>
 
             <div className="mt-5">

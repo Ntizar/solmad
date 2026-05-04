@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { ribbonApi } from '../workers/shadowsClient';
 import { flyToUser } from './MapView';
+import { getMadridWeather, cloudEmoji } from '../lib/weather';
 
 interface PointState {
   sunNow: boolean;
@@ -23,8 +24,16 @@ export function MeNowBadge() {
   const selectedDate = useAppStore((s) => s.selectedDate);
   const [state, setState] = useState<PointState | null>(null);
   const [pending, setPending] = useState(false);
+  const [cloudCover, setCloudCover] = useState<number | null>(null);
   const seqRef = useRef(0);
   const debRef = useRef<number | null>(null);
+
+  // Cobertura nubosa (cache 30 min)
+  useEffect(() => {
+    let cancel = false;
+    getMadridWeather().then((w) => { if (!cancel && w) setCloudCover(w.cloudCover); });
+    return () => { cancel = true; };
+  }, []);
 
   useEffect(() => {
     if (!userLocation || !buildingsLoaded) {
@@ -62,9 +71,20 @@ export function MeNowBadge() {
       cls = 'bg-night-700/95 text-paper border-white/10';
     } else if (state.sunNow) {
       const extra = state.directMinutes > 0 ? ` · ${fmtHM(state.directMinutes)}` : '';
-      label = `Te da el SOL${extra}`;
-      icon = '☀';
-      cls = 'bg-sun-300 text-night-900 border-sun-300 shadow-glow';
+      // Si nubes >=80% matizamos: técnicamente "te toca el rayo" pero apenas calienta
+      if (cloudCover != null && cloudCover >= 80) {
+        label = `Sol teórico · muy nublado${extra}`;
+        icon = '☁';
+        cls = 'bg-night-500/90 text-paper border-white/10';
+      } else if (cloudCover != null && cloudCover >= 50) {
+        label = `Te da el SOL · con nubes${extra}`;
+        icon = cloudEmoji(cloudCover);
+        cls = 'bg-sun-300/90 text-night-900 border-sun-300';
+      } else {
+        label = `Te da el SOL${extra}`;
+        icon = '☀';
+        cls = 'bg-sun-300 text-night-900 border-sun-300 shadow-glow';
+      }
     } else {
       label = 'Estás en SOMBRA';
       icon = '⛅';
