@@ -20548,5 +20548,15 @@
     "minutesLeft": 0,
     "directMinutes": 0,
     "updatedAt": "2026-05-04T13:55:16.801Z"
+  },
+  {
+    "id": 20348,
+    "key": "20348|125|990",
+    "sunNow": false,
+    "altitudeDeg": 50.53048328177814,
+    "azimuthDeg": 242.187740437883,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:57:36.604Z"
   }
 ]
