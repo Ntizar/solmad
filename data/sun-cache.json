@@ -18658,5 +18658,85 @@
     "minutesLeft": 0,
     "directMinutes": 0,
     "updatedAt": "2026-05-04T13:53:11.756Z"
+  },
+  {
+    "id": 665,
+    "key": "665|125|1065",
+    "sunNow": false,
+    "altitudeDeg": 38.01776750201863,
+    "azimuthDeg": 258.0329030299479,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 6043,
+    "key": "6043|125|1065",
+    "sunNow": true,
+    "altitudeDeg": 38.017932600888486,
+    "azimuthDeg": 258.0333677357871,
+    "minutesLeft": 204,
+    "directMinutes": 204,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 18474,
+    "key": "18474|125|1065",
+    "sunNow": true,
+    "altitudeDeg": 38.01866944436978,
+    "azimuthDeg": 258.0323452975556,
+    "minutesLeft": 204,
+    "directMinutes": 204,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 20440,
+    "key": "20440|125|1065",
+    "sunNow": true,
+    "altitudeDeg": 38.017963185046,
+    "azimuthDeg": 258.03344184361515,
+    "minutesLeft": 204,
+    "directMinutes": 204,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 20572,
+    "key": "20572|125|1065",
+    "sunNow": false,
+    "altitudeDeg": 38.01776750201863,
+    "azimuthDeg": 258.0329030299479,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 19513,
+    "key": "19513|125|1065",
+    "sunNow": true,
+    "altitudeDeg": 38.01800755886995,
+    "azimuthDeg": 258.0335281102948,
+    "minutesLeft": 204,
+    "directMinutes": 204,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 20526,
+    "key": "20526|125|1065",
+    "sunNow": true,
+    "altitudeDeg": 38.018635221789864,
+    "azimuthDeg": 258.0321240738173,
+    "minutesLeft": 204,
+    "directMinutes": 204,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
+  },
+  {
+    "id": 19094,
+    "key": "19094|125|1065",
+    "sunNow": false,
+    "altitudeDeg": 38.01764647707481,
+    "azimuthDeg": 258.03365647883754,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-04T13:53:16.572Z"
   }
 ]
