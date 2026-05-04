@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
 import { SunRhythm } from './SunRhythm';
-import { ribbonApi } from '../workers/shadowsClient';
+import { shadowsApi } from '../workers/shadowsClient';
 import { ContributionForm } from './ContributionForm';
 import { getMadridWeather, cloudHint, cloudEmoji } from '../lib/weather';
 
@@ -27,6 +27,7 @@ export function DetailPanel() {
   const terrazas = useAppStore((s) => s.terrazas);
   const sunStates = useAppStore((s) => s.sunStates);
   const quickSun = useAppStore((s) => s.quickSun);
+  const buildings = useAppStore((s) => s.buildings);
   const buildingsLoaded = useAppStore((s) => s.buildingsLoaded);
   const selectedDate = useAppStore((s) => s.selectedDate);
   const updateSunState = useAppStore((s) => s.updateSunState);
@@ -41,7 +42,7 @@ export function DetailPanel() {
   // Estado instantáneo desde quickSun (responde en <100ms al mover el slider)
   const tIndex = id != null ? terrazas.findIndex((x) => x.id === id) : -1;
   const rawQuickState = tIndex >= 0 && quickSun ? quickSun[tIndex] : 255;
-  const quickState = rawQuickState === 255 ? -1 : rawQuickState;
+  const quickState = rawQuickState === 255 || rawQuickState === 3 ? -1 : rawQuickState;
   const quickSunNow = quickState === 1;
   const quickNight = quickState === 2;
 
@@ -49,7 +50,7 @@ export function DetailPanel() {
   const dayKey = selectedDate.toDateString();
   const [localRibbon, setLocalRibbon] = useState<{ key: string; ribbon: number[] } | null>(null);
   useEffect(() => {
-    if (!t || !buildingsLoaded) return;
+    if (!t || !buildingsLoaded || buildings.length === 0) return;
     const key = `${t.id}|${dayKey}`;
     const cached = ribbonCache.get(key);
     if (cached) {
@@ -61,7 +62,7 @@ export function DetailPanel() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await ribbonApi().ribbonFor(t, selectedDate.toISOString());
+        const r = await shadowsApi().ribbonFor(t, selectedDate.toISOString());
         if (!cancelled) {
           setLocalRibbon({ key, ribbon: r });
           setRibbonCache(key, r);
@@ -73,7 +74,7 @@ export function DetailPanel() {
       }
     })();
     return () => { cancelled = true; };
-  }, [t, buildingsLoaded, dayKey, selectedDate, updateSunState, setRibbonCache, ribbonCache, localRibbon?.key]);
+  }, [t, buildingsLoaded, buildings.length, dayKey, selectedDate, updateSunState, setRibbonCache, ribbonCache, localRibbon?.key]);
 
   const ribbonToShow = localRibbon?.ribbon ?? sun?.ribbon;
 
@@ -90,12 +91,12 @@ export function DetailPanel() {
     // Quick disponible -> respuesta inmediata
     if (quickState !== -1) {
       if (quickNight) return { tag: '☾ Noche', cls: 'bg-night-500/40 text-paper' };
-      if (quickSunNow) return { tag: '☀ Sol ahora', cls: 'bg-sun-300 text-night-900' };
+      if (quickSunNow) return { tag: '☀ Sol probable', cls: 'bg-sun-300 text-night-900' };
       return { tag: '⛅ Sombra', cls: 'bg-night-500/40 text-paper' };
     }
     if (!sun) return { tag: selectedPending ? '⏳ Calculando este bar' : '⏳ Calculando', cls: 'bg-white/5 text-paper' };
     if (sun.altitudeDeg <= 0) return { tag: '☾ Noche', cls: 'bg-night-500/40 text-paper' };
-    if (sun.sunNow) return { tag: '☀ Sol ahora', cls: 'bg-sun-300 text-night-900' };
+    if (sun.sunNow) return { tag: '☀ Sol probable', cls: 'bg-sun-300 text-night-900' };
     return { tag: '⛅ Sombra', cls: 'bg-night-500/40 text-paper' };
   })();
 
@@ -147,8 +148,8 @@ export function DetailPanel() {
                 )}
               </div>
               <p className={`text-sm mt-1 ${status.cls.includes('night-900') ? 'text-night-900/75' : 'text-paper/75'}`}>
-                {!sun && quickState === -1 && 'Prioridad máxima: calculando este bar antes que el mapa.'}
-                {!sun && quickState !== -1 && 'Detalle preciso en un instante…'}
+                {!sun && quickState === -1 && 'Cargando edificios cercanos para estimar esta fachada.'}
+                {!sun && quickState !== -1 && 'Estimación rápida por la orientación de la fachada.'}
                 {sun && !sunNowEffective && sun.altitudeDeg > 0 && sun.minutesLeft > 0 && (
                   <>Ahora a la sombra. Hoy aún tendrá <strong>{fmtHM(sun.minutesLeft)}</strong> de sol.</>
                 )}
@@ -157,7 +158,7 @@ export function DetailPanel() {
                 )}
                 {sun && sun.altitudeDeg <= 0 && 'El sol ya se ha puesto (o aún no ha salido).'}
                 {sun && sunNowEffective && sunUntil && (
-                  <>Sol directo hasta aprox. <strong>{fmtTime(sunUntil)}</strong>.</>
+                  <>Sol probable hasta aprox. <strong>{fmtTime(sunUntil)}</strong>.</>
                 )}
               </p>
               {sunNowEffective && cloudHint(cloudCover) && (
@@ -168,7 +169,7 @@ export function DetailPanel() {
             </div>
 
             <div className="mt-5">
-              <p className="text-xs uppercase tracking-widest text-paper/60 mb-2">Ritmo solar de hoy</p>
+              <p className="text-xs uppercase tracking-widest text-paper/60 mb-2">Ritmo solar estimado</p>
               <SunRhythm ribbon={ribbonToShow} />
             </div>
 

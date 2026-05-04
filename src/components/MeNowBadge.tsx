@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { ribbonApi } from '../workers/shadowsClient';
+import { shadowsApi } from '../workers/shadowsClient';
 import { flyToUser } from './MapView';
 import { getMadridWeather, cloudEmoji } from '../lib/weather';
 
@@ -21,6 +21,7 @@ function fmtHM(min: number) {
 export function MeNowBadge() {
   const userLocation = useAppStore((s) => s.userLocation);
   const buildingsLoaded = useAppStore((s) => s.buildingsLoaded);
+  const buildings = useAppStore((s) => s.buildings);
   const selectedDate = useAppStore((s) => s.selectedDate);
   const [state, setState] = useState<PointState | null>(null);
   const [pending, setPending] = useState(false);
@@ -36,7 +37,7 @@ export function MeNowBadge() {
   }, []);
 
   useEffect(() => {
-    if (!userLocation || !buildingsLoaded) {
+    if (!userLocation || !buildingsLoaded || buildings.length === 0) {
       setState(null);
       return;
     }
@@ -45,7 +46,7 @@ export function MeNowBadge() {
     if (debRef.current) window.clearTimeout(debRef.current);
     debRef.current = window.setTimeout(async () => {
       try {
-        const r = await ribbonApi().pointAt(userLocation.lat, userLocation.lng, selectedDate.toISOString());
+        const r = await shadowsApi().pointAt(userLocation.lat, userLocation.lng, selectedDate.toISOString());
         if (seq !== seqRef.current) return;
         setState({ sunNow: r.sunNow, altitudeDeg: r.altitudeDeg, directMinutes: r.directMinutes });
       } catch {
@@ -55,7 +56,7 @@ export function MeNowBadge() {
       }
     }, 120);
     return () => { if (debRef.current) window.clearTimeout(debRef.current); };
-  }, [userLocation, buildingsLoaded, selectedDate]);
+  }, [userLocation, buildingsLoaded, buildings.length, selectedDate]);
 
   if (!userLocation) return null;
 
@@ -73,15 +74,15 @@ export function MeNowBadge() {
       const extra = state.directMinutes > 0 ? ` · ${fmtHM(state.directMinutes)}` : '';
       // Si nubes >=80% matizamos: técnicamente "te toca el rayo" pero apenas calienta
       if (cloudCover != null && cloudCover >= 80) {
-        label = `Sol teórico · muy nublado${extra}`;
+        label = `Sol probable · muy nublado${extra}`;
         icon = '☁';
         cls = 'bg-night-500/90 text-paper border-white/10';
       } else if (cloudCover != null && cloudCover >= 50) {
-        label = `Te da el SOL · con nubes${extra}`;
+        label = `Sol probable · con nubes${extra}`;
         icon = cloudEmoji(cloudCover);
         cls = 'bg-sun-300/90 text-night-900 border-sun-300';
       } else {
-        label = `Te da el SOL${extra}`;
+        label = `Sol probable${extra}`;
         icon = '☀';
         cls = 'bg-sun-300 text-night-900 border-sun-300 shadow-glow';
       }

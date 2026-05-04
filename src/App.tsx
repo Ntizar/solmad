@@ -1,25 +1,24 @@
 import { AnimatePresence } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Intro } from './components/Intro';
-import { MapView } from './components/MapView';
+import { MapView, flyToTerraza } from './components/MapView';
 import { TimeWheel } from './components/TimeWheel';
 import { DetailPanel } from './components/DetailPanel';
-import { SideList } from './components/SideList';
 import { SurpriseButton } from './components/SurpriseButton';
 import { FloatingTimeControl } from './components/FloatingTimeControl';
 import { LocationButton } from './components/LocationButton';
 import { MeNowBadge } from './components/MeNowBadge';
-import { VitaminaDButton } from './components/VitaminaDButton';
 import { SolarProgressBadge } from './components/SolarProgressBadge';
 import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
 import { fetchBuildings } from './lib/buildings';
-import { shadowsApi, ribbonApi } from './workers/shadowsClient';
+import { shadowsApi } from './workers/shadowsClient';
 import type { Terraza } from './lib/types';
 import { fetchRemoteSunCache, getLocalSunCache, saveRemoteSunCache, setLocalSunCache, type CachedSunState } from './lib/sunCache';
 
 const GEO_CACHE_KEY = 'solmad:userLocation:v1';
-const QUICK_LIMIT = 260;
+const QUICK_LIMIT = 220;
+const MAX_BACKGROUND_COMPUTE = 36;
 
 function dist2(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
   const dx = a.lng - b.lng;
@@ -32,7 +31,7 @@ function sunCacheKey(terrazaId: number, date: Date) {
   const mins = d.getHours() * 60 + d.getMinutes();
   const rounded = Math.round(mins / 15) * 15;
   const day = Math.floor((Date.UTC(2000, d.getMonth(), d.getDate()) - Date.UTC(2000, 0, 0)) / 86_400_000);
-  return `${terrazaId}|${day}|${rounded}`;
+  return `facade-v1|${terrazaId}|${day}|${rounded}`;
 }
 
 function toCachedSunState(id: number, key: string, state: CachedSunState | any): CachedSunState {
@@ -128,8 +127,7 @@ export function App() {
       const t = terrazas.find((x) => x.id === id);
       if (t) {
         setSelectedIdAction(id);
-        // Importación dinámica para evitar ciclos
-        import('./components/MapView').then(({ flyToTerraza }) => flyToTerraza(t));
+        flyToTerraza(t);
       }
       deepLinkAppliedRef.current = true;
     } catch { deepLinkAppliedRef.current = true; }
@@ -153,10 +151,16 @@ export function App() {
     const selected = selectedId != null ? terrazas.find((t) => t.id === selectedId) : null;
     const center = selected ?? userLocation;
     if (center) {
-      const pad = selected ? 0.006 : 0.012;
+      const pad = selected ? 0.0045 : 0.008;
       return [center.lat - pad, center.lng - pad, center.lat + pad, center.lng + pad] as [number, number, number, number];
     }
-    if (visibleBbox) return visibleBbox;
+    if (visibleBbox) {
+      const [south, west, north, east] = visibleBbox;
+      const lat = (south + north) / 2;
+      const lng = (west + east) / 2;
+      const pad = 0.008;
+      return [lat - pad, lng - pad, lat + pad, lng + pad] as [number, number, number, number];
+    }
     return null;
   }
 
@@ -168,19 +172,18 @@ export function App() {
     })();
   }, [setTerrazas]);
 
-  // 2) En cuanto hay terrazas, marca buildingsLoaded=true con índice vacío
-  // para que la UI dé respuesta provisional inmediata (cielo abierto). Los
-  // edificios reales se cargarán por zona y refinarán las sombras después.
+  // 2) En cuanto hay terrazas, inicializa workers. Sin edificios no se pinta sol:
+  // los marcadores quedan pendientes hasta que llegue al menos un tile de la zona.
   useEffect(() => {
     if (terrazas.length === 0 || buildingsLoaded) return;
     (async () => {
       await shadowsApi().setBuildings([], -3.7038, 40.4168);
-      await ribbonApi().setBuildings([], -3.7038, 40.4168);
       setBuildingsLoaded(true);
     })();
   }, [terrazas, buildingsLoaded, setBuildingsLoaded]);
 
-  // 3) Edificios por zona, progresivos. Refinan sombras conforme van llegando tiles.
+  // 3) Edificios por zona, progresivos. El primer tile disponible habilita
+  // estimación de fachada; el resto sólo refina sin bloquear al usuario.
   useEffect(() => {
     if (terrazas.length === 0) return;
     const bboxTarget = targetBbox();
@@ -194,6 +197,7 @@ export function App() {
     const originLng = (west + east) / 2;
     const originLat = (south + north) / 2;
     const cancelToken = { cancelled: false };
+    let partialQueue = Promise.resolve();
     (async () => {
       const api = shadowsApi();
       try {
@@ -201,18 +205,22 @@ export function App() {
           signal: cancelToken,
           onProgress: (done, total) => {
             if (seq !== buildingSeqRef.current) return;
-            setSolarProgress({ phase: 'buildings', done, total, message: 'Cargando sombras' });
+            setSolarProgress({ phase: 'buildings', done, total, message: 'Cargando edificios cercanos' });
           },
-          onPartial: async (partial) => {
-            if (seq !== buildingSeqRef.current) return;
-            // Reindexa con lo que haya hasta ahora; el quick effect refrescará sunNow.
-            await api.setBuildings(partial, originLng, originLat);
-            if (seq !== buildingSeqRef.current) return;
-            setBuildings(partial);
+          onPartial: (partial) => {
+            const snapshot = partial.slice();
+            partialQueue = partialQueue.then(async () => {
+              if (seq !== buildingSeqRef.current) return;
+              // Reindexa con lo que haya hasta ahora; el quick effect refresca fachada.
+              await api.setBuildings(snapshot, originLng, originLat);
+              if (seq !== buildingSeqRef.current) return;
+              setBuildings(snapshot);
+            }).catch((err) => console.warn('[solmad] No se pudo reindexar edificios:', err));
           }
         });
         if (seq !== buildingSeqRef.current) return;
-        await ribbonApi().setBuildings(buildings, originLng, originLat);
+        await partialQueue;
+        if (seq !== buildingSeqRef.current) return;
         setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       } catch (err) {
         console.warn('[solmad] Overpass falló, usando modo sin sombras:', err);
@@ -233,9 +241,8 @@ export function App() {
     return uniqueById([...(selected ? [selected] : []), ...nearby, ...fallback]).slice(0, QUICK_LIMIT);
   };
 
-  // 2) Recálculo ligero: solo terrazas visibles, seleccionada y 10 cercanas.
-  //    Usa heurística (orientación + edificios cercanos) si los edificios están aún cargándose;
-  //    quickFor (rayo real) cuando ya hay índice completo.
+  // 4) Primera respuesta visible: fachada del edificio mas cercano.
+  //    Es el estado principal para el usuario: rapido, estable y conservador.
   useEffect(() => {
     if (!buildingsLoaded || terrazas.length === 0) return;
     const targets = computeTargets();
@@ -245,11 +252,7 @@ export function App() {
     if (quickDebRef.current) clearTimeout(quickDebRef.current);
     quickDebRef.current = window.setTimeout(async () => {
       const api = shadowsApi();
-      const buildingsCount = useAppStore.getState().buildings.length;
-      const useHeuristic = buildingsCount > 0 && buildingsCount < 1500; // pocos tiles aún
-      const partial = useHeuristic
-        ? await api.heuristicFor(targets, selectedDate.toISOString())
-        : await api.quickFor(targets, selectedDate.toISOString());
+      const partial = await api.facadeQuickFor(targets, selectedDate.toISOString());
       if (seq !== quickSeqRef.current) return;
       const u = new Uint8Array(terrazas.length);
       u.fill(255);
@@ -262,10 +265,10 @@ export function App() {
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
   }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, setQuickSun]);
 
-  // 3) Recálculo completo cacheado por franja de 15 min solo para objetivos prioritarios.
+  // 5) Refinamiento acotado en background. No calcula toda la ciudad ni bloquea la UI.
   useEffect(() => {
-    if (!buildingsLoaded || terrazas.length === 0) return;
-    const targets = computeTargets();
+    if (!buildingsLoaded || terrazas.length === 0 || buildings.length === 0) return;
+    const targets = computeTargets().slice(0, MAX_BACKGROUND_COMPUTE);
     if (targets.length === 0) return;
     const seq = ++fullSeqRef.current;
     if (fullDebRef.current) clearTimeout(fullDebRef.current);
@@ -278,7 +281,7 @@ export function App() {
         if (cached) cachedEntries.push([t.id, cached]);
         else missing.push(t);
       }
-      setSolarProgress({ phase: 'solar', done: cachedEntries.length, total: targets.length, message: 'Refinando sombras' });
+      setSolarProgress({ phase: 'solar', done: cachedEntries.length, total: targets.length, message: 'Ajustando terrazas visibles' });
       if (cachedEntries.length) mergeSunStates(cachedEntries);
       if (missing.length) {
         const remoteRows = await fetchRemoteSunCache(missing.map((t) => sunCacheKey(t.id, selectedDate)));
@@ -291,9 +294,12 @@ export function App() {
           missing.splice(0, missing.length, ...missing.filter((t) => !remoteIds.has(t.id)));
         }
       }
-      if (missing.length === 0) return;
+      if (missing.length === 0) {
+        setSolarProgress({ phase: 'idle', done: targets.length, total: targets.length, message: '' });
+        return;
+      }
       const api = shadowsApi();
-      const states = await api.computeSubset(missing, selectedDate.toISOString());
+      const states = await api.facadeStateFor(missing, selectedDate.toISOString());
       if (seq !== fullSeqRef.current) return;
       const entries: Array<[number, typeof states[number]]> = [];
       const cacheRows: CachedSunState[] = [];
@@ -310,14 +316,14 @@ export function App() {
       setSolarProgress({ phase: 'idle', done: targets.length, total: targets.length, message: '' });
     }, 260);
     return () => { if (fullDebRef.current) clearTimeout(fullDebRef.current); };
-  }, [selectedDate, terrazas, buildingsLoaded, visibleIds, selectedId, userLocation, sunStateCache, mergeSunStates, setSunStateCacheEntries]);
+  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, sunStateCache, mergeSunStates, setSunStateCacheEntries]);
 
   useEffect(() => {
     resetSunStates();
   }, [selectedDate, resetSunStates]);
 
   useEffect(() => {
-    if (!buildingsLoaded || selectedId == null) return;
+    if (!buildingsLoaded || selectedId == null || buildings.length === 0) return;
     const terraza = terrazas.find((t) => t.id === selectedId);
     if (!terraza) return;
     const seq = ++selectedSeqRef.current;
@@ -330,7 +336,7 @@ export function App() {
     (async () => {
       try {
         if (!cached) {
-          const [state] = await shadowsApi().computeSubset([terraza], selectedDate.toISOString());
+          const [state] = await shadowsApi().facadeStateFor([terraza], selectedDate.toISOString());
           if (seq !== selectedSeqRef.current) return;
           const row = toCachedSunState(terraza.id, stateKey, state);
           setLocalSunCache(row);
@@ -338,7 +344,7 @@ export function App() {
           mergeSunStates([[terraza.id, row]]);
           saveRemoteSunCache([row]);
         }
-        const ribbon = await ribbonApi().ribbonFor(terraza, selectedDate.toISOString());
+        const ribbon = await shadowsApi().ribbonFor(terraza, selectedDate.toISOString());
         if (seq !== selectedSeqRef.current) return;
         setRibbonCache(dayKey, ribbon);
         useAppStore.getState().updateSunState(terraza.id, { ribbon });
@@ -347,7 +353,7 @@ export function App() {
         if (seq === selectedSeqRef.current) setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       }
     })();
-  }, [selectedId, buildingsLoaded, terrazas, selectedDate, sunStateCache, mergeSunStates, setSunStateCacheEntries, setRibbonCache, setSelectedPending]);
+  }, [selectedId, buildingsLoaded, buildings, terrazas, selectedDate, sunStateCache, mergeSunStates, setSunStateCacheEntries, setRibbonCache, setSelectedPending]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-night-700">
@@ -358,10 +364,8 @@ export function App() {
           {/* UI flotante */}
           <SurpriseButton />
           <LocationButton />
-          <VitaminaDButton />
           <MeNowBadge />
           <SolarProgressBadge />
-          <SideList />
           <FloatingTimeControl />
           <DetailPanel />
 

@@ -197,8 +197,8 @@ export async function fetchBuildings(
     acc.push(...data);
     done++;
     opts.onProgress?.(done, total);
-    // Emite parcial cada pocos tiles para que la UI refine sombras gradualmente.
-    if (done % 2 === 0 || done === total) opts.onPartial?.(acc);
+    // Emite cada tile: la estimacion de fachada debe estar disponible cuanto antes.
+    opts.onPartial?.(acc);
   });
 
   if (cacheDirty) writeCache(cache);

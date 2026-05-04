@@ -6,12 +6,14 @@ const M_PER_DEG_LAT = 111_320;
 const RAY_LEN_M = 380;
 const STEP_MIN = 12;
 const RIBBON_STEP_MIN = 30;
+const FACADE_SEARCH_M = 95;
 
 function mPerDegLng(lat: number) {
   return 111_320 * Math.cos((lat * Math.PI) / 180);
 }
 
 interface Seg { ax: number; ay: number; bx: number; by: number; h: number; tag: number; }
+interface NearestSeg { seg: Seg; dist: number; px: number; py: number; }
 
 class SegIndex {
   cell = 60;
@@ -19,10 +21,13 @@ class SegIndex {
   originLng = 0; originLat = 0; mLng = 1;
   tagCounter = 0;
   visitToken = 0;
+  minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity;
 
   build(buildings: BuildingPoly[], originLng: number, originLat: number) {
     this.originLng = originLng; this.originLat = originLat;
     this.mLng = mPerDegLng(originLat);
+    this.grid.clear();
+    this.minX = Infinity; this.maxX = -Infinity; this.minY = Infinity; this.maxY = -Infinity;
     for (const b of buildings) {
       const r = b.ring;
       for (let i = 0; i < r.length - 1; i++) {
@@ -38,6 +43,10 @@ class SegIndex {
   indexSeg(s: Seg) {
     const minX = Math.min(s.ax, s.bx), maxX = Math.max(s.ax, s.bx);
     const minY = Math.min(s.ay, s.by), maxY = Math.max(s.ay, s.by);
+    this.minX = Math.min(this.minX, minX);
+    this.maxX = Math.max(this.maxX, maxX);
+    this.minY = Math.min(this.minY, minY);
+    this.maxY = Math.max(this.maxY, maxY);
     const c = this.cell;
     for (let cx = Math.floor(minX / c); cx <= Math.floor(maxX / c); cx++) {
       for (let cy = Math.floor(minY / c); cy <= Math.floor(maxY / c); cy++) {
@@ -71,9 +80,51 @@ class SegIndex {
       }
     }
   }
+
+  nearestSegment(ox: number, oy: number, radius: number): NearestSeg | null {
+    if (!this.hasCoverage(ox, oy, radius)) return null;
+    const c = this.cell;
+    const cells = Math.ceil(radius / c);
+    const baseCx = Math.floor(ox / c), baseCy = Math.floor(oy / c);
+    const token = ++this.visitToken;
+    let best: NearestSeg | null = null;
+    for (let dx = -cells; dx <= cells; dx++) {
+      for (let dy = -cells; dy <= cells; dy++) {
+        const arr = this.grid.get((baseCx + dx) + ',' + (baseCy + dy));
+        if (!arr) continue;
+        for (const seg of arr) {
+          if (seg.tag === token) continue;
+          seg.tag = token;
+          const p = closestPointOnSeg(ox, oy, seg);
+          if (p.dist > radius) continue;
+          if (!best || p.dist < best.dist) best = { seg, ...p };
+        }
+      }
+    }
+    return best;
+  }
+
+  hasCoverage(ox: number, oy: number, margin: number) {
+    return Number.isFinite(this.minX)
+      && ox >= this.minX - margin && ox <= this.maxX + margin
+      && oy >= this.minY - margin && oy <= this.maxY + margin;
+  }
 }
 
 let index: SegIndex | null = null;
+
+function closestPointOnSeg(px: number, py: number, s: Seg): { dist: number; px: number; py: number } {
+  const vx = s.bx - s.ax, vy = s.by - s.ay;
+  const len2 = vx * vx + vy * vy;
+  if (len2 <= 1e-9) {
+    const d = Math.hypot(px - s.ax, py - s.ay);
+    return { dist: d, px: s.ax, py: s.ay };
+  }
+  const raw = ((px - s.ax) * vx + (py - s.ay) * vy) / len2;
+  const t = Math.max(0, Math.min(1, raw));
+  const qx = s.ax + vx * t, qy = s.ay + vy * t;
+  return { dist: Math.hypot(px - qx, py - qy), px: qx, py: qy };
+}
 
 function segIntersectRay(ox: number, oy: number, dx: number, dy: number, len: number, s: Seg): number | null {
   const r2x = s.bx - s.ax, r2y = s.by - s.ay;
@@ -109,6 +160,73 @@ function sunPos(when: Date, lat: number, lng: number) {
   const az = (((p.azimuth * 180) / Math.PI) + 180 + 360) % 360;
   const al = (p.altitude * 180) / Math.PI;
   return { az, al };
+}
+
+/**
+ * Estimacion estable: la terraza hereda la orientacion del edificio mas cercano.
+ * Si el sol esta delante de esa fachada, marcamos sol; si queda detras y la sombra
+ * del edificio alcanza la terraza, marcamos sombra. Es barato y evita calcular toda
+ * una escena fisica con datos OSM incompletos.
+ */
+function facadeLitAt(ox: number, oy: number, azDeg: number, altDeg: number): boolean | null {
+  if (altDeg <= 0) return false;
+  const idx = index;
+  if (!idx || idx.grid.size === 0) return null;
+  if (!idx.hasCoverage(ox, oy, FACADE_SEARCH_M)) return null;
+  const nearest = idx.nearestSegment(ox, oy, FACADE_SEARCH_M);
+  if (!nearest) return true; // sin edificio cercano: tratamos como cielo abierto
+
+  const a = (azDeg * Math.PI) / 180;
+  const sunX = Math.sin(a), sunY = Math.cos(a);
+
+  let faceX = ox - nearest.px;
+  let faceY = oy - nearest.py;
+  let faceLen = Math.hypot(faceX, faceY);
+  if (faceLen < 0.75) {
+    // Si el punto cae casi encima de la linea del edificio, usamos el vector al centro del segmento.
+    faceX = ox - (nearest.seg.ax + nearest.seg.bx) / 2;
+    faceY = oy - (nearest.seg.ay + nearest.seg.by) / 2;
+    faceLen = Math.hypot(faceX, faceY);
+  }
+  if (faceLen < 0.75) return null;
+  faceX /= faceLen;
+  faceY /= faceLen;
+
+  const dot = faceX * sunX + faceY * sunY;
+  const tanAlt = Math.tan((Math.max(altDeg, 1) * Math.PI) / 180);
+  const shadowLen = nearest.seg.h / tanAlt;
+
+  // Sol claramente en frente de la fachada.
+  if (dot > 0.08) return true;
+  // Sol claramente detras: el edificio tapa si su sombra llega a la terraza.
+  if (dot < -0.08) return nearest.dist > shadowLen + 4;
+  // Sol lateral: conservador con sol bajo, permisivo con sol alto.
+  if (altDeg < 35 && nearest.dist < shadowLen * 0.45) return false;
+  return true;
+}
+
+function facadeStateForOne(t: Terraza, when: Date): SunState {
+  const { az: azNow, al: altNow } = sunPos(when, t.lat, t.lng);
+  const idx = index;
+  const [ox, oy] = idx ? idx.toM(t.lng, t.lat) : [0, 0];
+  const nowLit = facadeLitAt(ox, oy, azNow, altNow);
+  const sunNow = nowLit === true;
+
+  let minutesLeft = 0;
+  let directMinutes = 0;
+  let directOpen = sunNow;
+  const times = SunCalc.getTimes(when, t.lat, t.lng);
+  const sunset = times.sunset;
+  if (sunset && when < sunset) {
+    for (let ts = when.getTime(); ts < sunset.getTime(); ts += STEP_MIN * 60_000) {
+      const s = sunPos(new Date(ts), t.lat, t.lng);
+      const lit = facadeLitAt(ox, oy, s.az, s.al) === true;
+      if (lit) minutesLeft += STEP_MIN;
+      if (directOpen && lit) directMinutes += STEP_MIN;
+      else directOpen = false;
+    }
+  }
+  return { sunNow, altitudeDeg: altNow, azimuthDeg: azNow, minutesLeft, directMinutes };
 }
 
 const api = {
@@ -162,6 +280,12 @@ const api = {
     return api.computeFor(terrazas, whenIso);
   },
 
+  /** Estado rapido y estable: orientacion respecto al edificio mas cercano. */
+  facadeStateFor(terrazas: Terraza[], whenIso: string): SunState[] {
+    const when = new Date(whenIso);
+    return terrazas.map((t) => facadeStateForOne(t, when));
+  },
+
   /** Ribbon de 48 medias horas para una sola terraza. */
   ribbonFor(t: Terraza, whenIso: string): number[] {
     const when = new Date(whenIso);
@@ -173,7 +297,10 @@ const api = {
       const d = new Date(day.getTime() + k * RIBBON_STEP_MIN * 60_000);
       const { az, al } = sunPos(d, t.lat, t.lng);
       if (al <= 0) ribbon[k] = 2;
-      else ribbon[k] = isSunlit(ox, oy, az, al) ? 1 : 0;
+      else {
+        const lit = facadeLitAt(ox, oy, az, al);
+        ribbon[k] = lit === true ? 1 : 0;
+      }
     }
     return ribbon;
   },
@@ -184,7 +311,7 @@ const api = {
     const idx = index;
     const [ox, oy] = idx ? idx.toM(lng, lat) : [0, 0];
     const { az, al } = sunPos(when, lat, lng);
-    const sunNow = al > 0 && isSunlit(ox, oy, az, al);
+    const sunNow = facadeLitAt(ox, oy, az, al) === true;
     let directMinutes = 0;
     if (sunNow) {
       const times = SunCalc.getTimes(when, lat, lng);
@@ -193,7 +320,7 @@ const api = {
         const end = sunset.getTime();
         for (let ts = when.getTime(); ts < end; ts += STEP_MIN * 60_000) {
           const s = sunPos(new Date(ts), lat, lng);
-          if (s.al > 0 && isSunlit(ox, oy, s.az, s.al)) directMinutes += STEP_MIN;
+          if (s.al > 0 && facadeLitAt(ox, oy, s.az, s.al) === true) directMinutes += STEP_MIN;
           else break;
         }
       }
@@ -218,54 +345,29 @@ const api = {
     return out;
   },
 
+  /** Quick principal: fachada del edificio mas cercano. Estados: 0=sombra, 1=sol, 2=noche, 3=pendiente. */
+  facadeQuickFor(terrazas: Terraza[], whenIso: string): Uint8Array {
+    const when = new Date(whenIso);
+    const out = new Uint8Array(terrazas.length);
+    const idx = index;
+    const noBuildings = !idx || idx.grid.size === 0;
+    for (let i = 0; i < terrazas.length; i++) {
+      const t = terrazas[i];
+      const { az, al } = sunPos(when, t.lat, t.lng);
+      if (al <= 0) { out[i] = 2; continue; }
+      if (noBuildings) { out[i] = 3; continue; }
+      const [ox, oy] = idx!.toM(t.lng, t.lat);
+      const lit = facadeLitAt(ox, oy, az, al);
+      out[i] = lit == null ? 3 : lit ? 1 : 0;
+    }
+    return out;
+  },
+
   /** Heurística rápida basada en orientación y bbox de edificios cercanos.
    *  Para cada terraza estima sol/sombra mirando si hay edificios altos en el azimut del sol.
    *  Mucho más rápido que el rayo real, pero buena aproximación inicial. */
   heuristicFor(terrazas: Terraza[], whenIso: string): Uint8Array {
-    const idx = index;
-    if (!idx || idx.grid.size === 0) return api.quickFor(terrazas, whenIso);
-    const when = new Date(whenIso);
-    const out = new Uint8Array(terrazas.length);
-    const SEARCH_M = 80; // mirar edificios en 80m a la redonda
-    for (let i = 0; i < terrazas.length; i++) {
-      const t = terrazas[i];
-      const { az: azDeg, al: altDeg } = sunPos(when, t.lat, t.lng);
-      if (altDeg <= 0) { out[i] = 2; continue; }
-      const [ox, oy] = idx.toM(t.lng, t.lat);
-      // ángulo del sol respecto al norte; vector hacia el sol = (sin az, cos az)
-      const azRad = (azDeg * Math.PI) / 180;
-      const sx = Math.sin(azRad), sy = Math.cos(azRad);
-      const tanAlt = Math.tan((altDeg * Math.PI) / 180);
-      // Recorre celdas en un radio SEARCH_M y mide si hay altura suficiente para tapar el sol
-      let blocked = false;
-      const c = idx.cell;
-      const cells = Math.ceil(SEARCH_M / c);
-      const baseCx = Math.floor(ox / c), baseCy = Math.floor(oy / c);
-      const token = ++idx.visitToken;
-      for (let dx = -cells; dx <= cells && !blocked; dx++) {
-        for (let dy = -cells; dy <= cells && !blocked; dy++) {
-          const arr = idx.grid.get((baseCx + dx) + ',' + (baseCy + dy));
-          if (!arr) continue;
-          for (const seg of arr) {
-            if (seg.tag === token) continue;
-            seg.tag = token;
-            // Centro del segmento como punto representativo
-            const mx = (seg.ax + seg.bx) / 2 - ox;
-            const my = (seg.ay + seg.by) / 2 - oy;
-            const dist = Math.hypot(mx, my);
-            if (dist > SEARCH_M || dist < 1) continue;
-            // ¿Está en la dirección del sol? Producto escalar con el vector solar.
-            const dot = (mx * sx + my * sy) / dist;
-            if (dot < 0.5) continue; // fuera del cono de ±60º hacia el sol
-            // Altura necesaria para tapar el sol a esta distancia
-            const need = dist * tanAlt;
-            if (seg.h > need + 1) { blocked = true; break; }
-          }
-        }
-      }
-      out[i] = blocked ? 0 : 1;
-    }
-    return out;
+    return api.facadeQuickFor(terrazas, whenIso);
   }
 };
 
