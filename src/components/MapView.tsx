@@ -234,8 +234,8 @@ export function MapView() {
     if (!map || !layer) return;
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const MAX_DRAW = isMobile ? 700 : 1800;
-    const MIN_ZOOM_FOR_SHADOWS = isMobile ? 13 : 12;
+    const MAX_DRAW = isMobile ? 350 : 1400;
+    const MIN_ZOOM_FOR_SHADOWS = isMobile ? 14 : 12;
     let rafId = 0;
     let pending = false;
     // Renderer canvas dedicado: mucho más fluido en móvil que SVG con cientos de polígonos
@@ -250,7 +250,7 @@ export function MapView() {
       const { az, alt } = sunAt(selectedDate, center.lat, center.lng);
       if (alt <= 1) return;
 
-      const bounds = map.getBounds().pad(isMobile ? 0.22 : 0.38);
+      const bounds = map.getBounds().pad(isMobile ? 0.10 : 0.30);
       const visibleBuildings = buildings.filter((building) => ringTouchesBounds(building.ring, bounds)).slice(0, MAX_DRAW);
       let drawn = 0;
       for (const building of visibleBuildings) {

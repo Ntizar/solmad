@@ -1,18 +1,67 @@
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
+
+const SHOW_AFTER_MS = 500;
+const HIDE_AFTER_IDLE_MS = 800;
 
 export function SolarProgressBadge() {
   const progress = useAppStore((s) => s.solarProgress);
-  if (progress.phase === 'idle' || progress.total <= 0) return null;
-  const pct = Math.max(0, Math.min(100, Math.round((progress.done / progress.total) * 100)));
+  const [visible, setVisible] = useState(false);
+  const showTimer = useRef<number | null>(null);
+  const hideTimer = useRef<number | null>(null);
+
+  const active = progress.phase !== 'idle' && progress.total > 0;
+  const pct = active ? Math.max(0, Math.min(100, Math.round((progress.done / progress.total) * 100))) : 100;
+
+  useEffect(() => {
+    if (active) {
+      if (hideTimer.current) { window.clearTimeout(hideTimer.current); hideTimer.current = null; }
+      if (!visible && !showTimer.current) {
+        showTimer.current = window.setTimeout(() => {
+          setVisible(true);
+          showTimer.current = null;
+        }, SHOW_AFTER_MS);
+      }
+    } else {
+      if (showTimer.current) { window.clearTimeout(showTimer.current); showTimer.current = null; }
+      if (visible && !hideTimer.current) {
+        hideTimer.current = window.setTimeout(() => {
+          setVisible(false);
+          hideTimer.current = null;
+        }, HIDE_AFTER_IDLE_MS);
+      }
+    }
+    return () => undefined;
+  }, [active, visible]);
+
+  useEffect(() => () => {
+    if (showTimer.current) window.clearTimeout(showTimer.current);
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+  }, []);
+
+  if (!visible) return null;
 
   return (
-    <div className="fixed left-1/2 -translate-x-1/2 top-[154px] sm:top-[104px] md:top-16 z-30 w-[min(82vw,340px)] rounded-2xl bg-night-700/88 border border-white/10 text-paper shadow-xl backdrop-blur px-3 py-2">
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="truncate">{progress.message}</span>
-        <span className="font-mono text-sun-300">{pct}%</span>
-      </div>
-      <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
-        <div className="h-full bg-sun-300 transition-all" style={{ width: `${pct}%` }} />
+    <div
+      className="fixed bottom-[112px] right-3 z-30 pointer-events-none transition-opacity duration-300"
+      style={{ opacity: active ? 1 : 0 }}
+      aria-hidden={!active}
+      title={active ? `Calculando sombras (${pct}%)` : 'Sombras al día'}
+    >
+      <div className="relative w-9 h-9 rounded-full bg-night-700/85 border border-white/10 backdrop-blur shadow-lg flex items-center justify-center">
+        <svg viewBox="0 0 36 36" className="absolute inset-0 w-full h-full -rotate-90">
+          <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="3" />
+          <circle
+            cx="18" cy="18" r="15"
+            fill="none"
+            stroke="#FBBF24"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={`${(pct / 100) * 94.25} 94.25`}
+            style={{ transition: 'stroke-dasharray 200ms linear' }}
+          />
+        </svg>
+        <span className="text-sun-300 text-base leading-none">☀</span>
       </div>
     </div>
   );

@@ -135,6 +135,19 @@ export function App() {
     })();
   }, [setTerrazas]);
 
+  // 2) En cuanto hay terrazas, marca buildingsLoaded=true con índice vacío
+  // para que la UI dé respuesta provisional inmediata (cielo abierto). Los
+  // edificios reales se cargarán por zona y refinarán las sombras después.
+  useEffect(() => {
+    if (terrazas.length === 0 || buildingsLoaded) return;
+    (async () => {
+      await shadowsApi().setBuildings([], -3.7038, 40.4168);
+      await ribbonApi().setBuildings([], -3.7038, 40.4168);
+      setBuildingsLoaded(true);
+    })();
+  }, [terrazas, buildingsLoaded, setBuildingsLoaded]);
+
+  // 3) Edificios por zona, progresivos. Refinan sombras conforme van llegando tiles.
   useEffect(() => {
     if (terrazas.length === 0) return;
     const bboxTarget = targetBbox();
@@ -147,31 +160,34 @@ export function App() {
     const east = Math.min(-3.52, eastRaw + 0.004);
     const originLng = (west + east) / 2;
     const originLat = (south + north) / 2;
-    setBuildingsLoaded(false);
-    setSolarProgress({ phase: 'buildings', done: 1, total: 4, message: selectedId ? 'Preparando sombras de este bar' : 'Cargando sombras de la zona' });
+    const cancelToken = { cancelled: false };
     (async () => {
       const api = shadowsApi();
       try {
-        const buildings = await fetchBuildings([south, west, north, east]);
+        const buildings = await fetchBuildings([south, west, north, east], {
+          signal: cancelToken,
+          onProgress: (done, total) => {
+            if (seq !== buildingSeqRef.current) return;
+            setSolarProgress({ phase: 'buildings', done, total, message: 'Cargando sombras' });
+          },
+          onPartial: async (partial) => {
+            if (seq !== buildingSeqRef.current) return;
+            // Reindexa con lo que haya hasta ahora; el quick effect refrescará sunNow.
+            await api.setBuildings(partial, originLng, originLat);
+            if (seq !== buildingSeqRef.current) return;
+            setBuildings(partial);
+          }
+        });
         if (seq !== buildingSeqRef.current) return;
-        setSolarProgress({ phase: 'buildings', done: 3, total: 4, message: 'Indexando edificios cercanos' });
-        setBuildings(buildings);
-        await api.setBuildings(buildings, originLng, originLat);
         await ribbonApi().setBuildings(buildings, originLng, originLat);
-        if (seq !== buildingSeqRef.current) return;
-        setBuildingsLoaded(true);
-        setSolarProgress({ phase: 'solar', done: 0, total: 1, message: 'Calculando terrazas cercanas' });
+        setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       } catch (err) {
         console.warn('[solmad] Overpass falló, usando modo sin sombras:', err);
-        if (seq !== buildingSeqRef.current) return;
-        setBuildings([]);
-        await api.setBuildings([], originLng, originLat);
-        await ribbonApi().setBuildings([], originLng, originLat);
-        setBuildingsLoaded(true);
-        setSolarProgress({ phase: 'solar', done: 0, total: 1, message: 'Calculando sin edificios OSM' });
+        setSolarProgress({ phase: 'idle', done: 0, total: 0, message: '' });
       }
     })();
-  }, [terrazas, visibleBbox, selectedId, userLocation, setBuildings, setBuildingsLoaded, setSolarProgress]);
+    return () => { cancelToken.cancelled = true; };
+  }, [terrazas, visibleBbox, selectedId, userLocation, setBuildings, setSolarProgress]);
 
   const computeTargets = () => {
     const visibleSet = new Set(visibleIds);
@@ -203,7 +219,6 @@ export function App() {
         if (globalIndex >= 0) u[globalIndex] = partial[index];
       });
       setQuickSun(u);
-      setSolarProgress({ phase: 'solar', done: Math.min(targets.length, QUICK_LIMIT), total: Math.min(targets.length, QUICK_LIMIT), message: 'Terrazas cercanas listas' });
     }, 100);
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
   }, [selectedDate, terrazas, buildingsLoaded, visibleIds, selectedId, userLocation, setQuickSun]);
@@ -224,7 +239,7 @@ export function App() {
         if (cached) cachedEntries.push([t.id, cached]);
         else missing.push(t);
       }
-      setSolarProgress({ phase: 'solar', done: cachedEntries.length, total: targets.length, message: 'Reusando cache solar' });
+      setSolarProgress({ phase: 'solar', done: cachedEntries.length, total: targets.length, message: 'Refinando sombras' });
       if (cachedEntries.length) mergeSunStates(cachedEntries);
       if (missing.length) {
         const remoteRows = await fetchRemoteSunCache(missing.map((t) => sunCacheKey(t.id, selectedDate)));
@@ -271,7 +286,7 @@ export function App() {
     const dayKey = `${terraza.id}|${selectedDate.toDateString()}`;
     const cached = sunStateCache.get(stateKey) || getLocalSunCache(stateKey);
     setSelectedPending(!cached);
-    setSolarProgress({ phase: 'selected', done: cached ? 1 : 0, total: 1, message: cached ? 'Bar listo desde cache' : 'Calculando este bar' });
+    if (!cached) setSolarProgress({ phase: 'selected', done: 0, total: 1, message: 'Calculando este bar' });
     if (cached) mergeSunStates([[terraza.id, cached]]);
     (async () => {
       try {

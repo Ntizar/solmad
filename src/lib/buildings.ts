@@ -5,35 +5,35 @@ const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.osm.ch/api/interpreter'
 ];
-const DEFAULT_HEIGHT_M = 10; // fallback prudente: evita sombras falsas en edificios sin altura OSM
+const DEFAULT_HEIGHT_M = 10;
 const LEVEL_HEIGHT_M = 3.2;
-const CACHE_KEY = 'solmad:buildings:v3';
-const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
-const TILE_ROWS = 4;
-const TILE_COLS = 4;
-const TILE_CONCURRENCY = 2;
+const TILE_CACHE_KEY = 'solmad:buildings:tiles:v1';
+const TILE_TTL_MS = 1000 * 60 * 60 * 24 * 3; // 3 días por tile
+const TILE_SIZE_DEG = 0.012; // ~1.3km. Más fácil de cachear y reusar al panear.
 
-interface CacheEntry { ts: number; bbox: [number, number, number, number]; data: BuildingPoly[]; }
+interface TileEntry { ts: number; data: BuildingPoly[]; }
+type TileCache = Record<string, TileEntry>;
 
-function readCache(bbox: [number, number, number, number]): BuildingPoly[] | null {
+const isMobile = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const TILE_CONCURRENCY = isMobile ? 2 : 3;
+const TILE_TIMEOUT_SEC = isMobile ? 14 : 22;
+
+function readCache(): TileCache {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const entry: CacheEntry = JSON.parse(raw);
-    if (Date.now() - entry.ts > CACHE_TTL_MS) return null;
-    if (!sameBbox(entry.bbox, bbox)) return null;
-    return entry.data;
-  } catch { return null; }
+    const raw = localStorage.getItem(TILE_CACHE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as TileCache;
+  } catch { return {}; }
 }
 
-function sameBbox(a: number[], b: number[]) {
-  return a.every((v, i) => Math.abs(v - b[i]) < 1e-4);
-}
-
-function writeCache(bbox: [number, number, number, number], data: BuildingPoly[]) {
+function writeCache(cache: TileCache) {
   try {
-    const entry: CacheEntry = { ts: Date.now(), bbox, data };
-    localStorage.setItem(CACHE_KEY, JSON.stringify(entry));
+    // Limpia entradas viejas para no inflar el storage.
+    const now = Date.now();
+    for (const k of Object.keys(cache)) {
+      if (now - cache[k].ts > TILE_TTL_MS) delete cache[k];
+    }
+    localStorage.setItem(TILE_CACHE_KEY, JSON.stringify(cache));
   } catch { /* quota: ignorar */ }
 }
 
@@ -50,18 +50,22 @@ function parseHeight(tags: Record<string, string> | undefined): number {
   return DEFAULT_HEIGHT_M;
 }
 
-function splitBbox(bbox: [number, number, number, number]) {
+function tileKey(row: number, col: number) {
+  return `${row}:${col}`;
+}
+
+function bboxToTiles(bbox: [number, number, number, number]) {
   const [south, west, north, east] = bbox;
-  const tiles: [number, number, number, number][] = [];
-  const latStep = (north - south) / TILE_ROWS;
-  const lngStep = (east - west) / TILE_COLS;
-  for (let row = 0; row < TILE_ROWS; row++) {
-    for (let col = 0; col < TILE_COLS; col++) {
-      const s = south + row * latStep;
-      const n = row === TILE_ROWS - 1 ? north : s + latStep;
-      const w = west + col * lngStep;
-      const e = col === TILE_COLS - 1 ? east : w + lngStep;
-      tiles.push([s, w, n, e]);
+  const rowStart = Math.floor(south / TILE_SIZE_DEG);
+  const rowEnd = Math.floor(north / TILE_SIZE_DEG);
+  const colStart = Math.floor(west / TILE_SIZE_DEG);
+  const colEnd = Math.floor(east / TILE_SIZE_DEG);
+  const tiles: { row: number; col: number; bbox: [number, number, number, number] }[] = [];
+  for (let row = rowStart; row <= rowEnd; row++) {
+    for (let col = colStart; col <= colEnd; col++) {
+      const s = row * TILE_SIZE_DEG;
+      const w = col * TILE_SIZE_DEG;
+      tiles.push({ row, col, bbox: [s, w, s + TILE_SIZE_DEG, w + TILE_SIZE_DEG] });
     }
   }
   return tiles;
@@ -80,13 +84,10 @@ async function pool<T, R>(items: T[], limit: number, work: (item: T, index: numb
   return results;
 }
 
-function parseElements(json: any, seen: Set<string>) {
+function parseElements(json: any): BuildingPoly[] {
   const out: BuildingPoly[] = [];
   for (const el of json.elements ?? []) {
     if (el.type !== 'way' || !el.geometry) continue;
-    const key = el.id ? `way:${el.id}` : JSON.stringify(el.geometry.slice(0, 3));
-    if (seen.has(key)) continue;
-    seen.add(key);
     const ring = el.geometry.map((p: any) => [p.lon, p.lat]) as [number, number][];
     if (ring.length < 3) continue;
     out.push({ ring, height: parseHeight(el.tags) });
@@ -94,44 +95,112 @@ function parseElements(json: any, seen: Set<string>) {
   return out;
 }
 
-async function postOverpass(endpoint: string, bbox: [number, number, number, number], timeoutSec = 25) {
+async function postOverpass(endpoint: string, bbox: [number, number, number, number]) {
   const [s, w, n, e] = bbox;
-  const q = `[out:json][timeout:${timeoutSec}];(way["building"](${s},${w},${n},${e}););out body geom;`;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(q)
-  });
-  if (!res.ok) throw new Error(`Overpass ${res.status} @ ${new URL(endpoint).host}`);
-  return res.json();
+  const q = `[out:json][timeout:${TILE_TIMEOUT_SEC}];(way["building"](${s},${w},${n},${e}););out body geom;`;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), (TILE_TIMEOUT_SEC + 4) * 1000);
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(q),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`Overpass ${res.status}`);
+    return res.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
-async function fetchTile(bbox: [number, number, number, number], seen: Set<string>) {
+async function fetchTile(bbox: [number, number, number, number]) {
   let lastError: unknown = null;
   for (const endpoint of ENDPOINTS) {
     try {
       const json = await postOverpass(endpoint, bbox);
-      return parseElements(json, seen);
+      return parseElements(json);
     } catch (err) {
       lastError = err;
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
   console.warn('[solmad] Tile de edificios omitido:', lastError);
   return [];
 }
 
-/** bbox = [south, west, north, east] */
-export async function fetchBuildings(
-  bbox: [number, number, number, number]
-): Promise<BuildingPoly[]> {
-  const cached = readCache(bbox);
-  if (cached) return cached;
+interface FetchOptions {
+  onProgress?: (done: number, total: number) => void;
+  onPartial?: (buildings: BuildingPoly[]) => void;
+  signal?: { cancelled: boolean };
+}
 
-  const seen = new Set<string>();
-  const chunks = await pool(splitBbox(bbox), TILE_CONCURRENCY, (tile) => fetchTile(tile, seen));
-  const out = chunks.flat();
-  if (out.length === 0) throw new Error('Overpass no devolvió edificios');
-  writeCache(bbox, out);
-  return out;
+/**
+ * Descarga edificios por tiles ~1.3km. Cada tile se cachea por 3 días en localStorage,
+ * así que paneo y zoom son casi gratis. Llama onProgress por tile completado y
+ * onPartial con el set acumulado para que la UI pueda refinar sombras de inmediato.
+ *
+ * bbox = [south, west, north, east]
+ */
+export async function fetchBuildings(
+  bbox: [number, number, number, number],
+  opts: FetchOptions = {}
+): Promise<BuildingPoly[]> {
+  const cache = readCache();
+  const tiles = bboxToTiles(bbox);
+  if (tiles.length === 0) return [];
+
+  // Centro para priorizar primero los tiles más cercanos: los del bar/usuario.
+  const cy = (bbox[0] + bbox[2]) / 2;
+  const cx = (bbox[1] + bbox[3]) / 2;
+  const centerRow = cy / TILE_SIZE_DEG;
+  const centerCol = cx / TILE_SIZE_DEG;
+  tiles.sort((a, b) => {
+    const da = (a.row - centerRow) ** 2 + (a.col - centerCol) ** 2;
+    const db = (b.row - centerRow) ** 2 + (b.col - centerCol) ** 2;
+    return da - db;
+  });
+
+  const total = tiles.length;
+  let done = 0;
+  const acc: BuildingPoly[] = [];
+  let cacheDirty = false;
+
+  // Primero vacía caché y emite acumulado de tiles cacheados (instantáneo).
+  for (const tile of tiles) {
+    const key = tileKey(tile.row, tile.col);
+    const entry = cache[key];
+    if (entry && Date.now() - entry.ts <= TILE_TTL_MS) {
+      acc.push(...entry.data);
+      done++;
+      opts.onProgress?.(done, total);
+    }
+  }
+  if (acc.length) opts.onPartial?.(acc);
+
+  const pending = tiles.filter((tile) => {
+    const key = tileKey(tile.row, tile.col);
+    const entry = cache[key];
+    return !entry || Date.now() - entry.ts > TILE_TTL_MS;
+  });
+
+  if (pending.length === 0) {
+    return acc;
+  }
+
+  await pool(pending, TILE_CONCURRENCY, async (tile) => {
+    if (opts.signal?.cancelled) return;
+    const data = await fetchTile(tile.bbox);
+    if (opts.signal?.cancelled) return;
+    cache[tileKey(tile.row, tile.col)] = { ts: Date.now(), data };
+    cacheDirty = true;
+    acc.push(...data);
+    done++;
+    opts.onProgress?.(done, total);
+    // Emite parcial cada pocos tiles para que la UI refine sombras gradualmente.
+    if (done % 2 === 0 || done === total) opts.onPartial?.(acc);
+  });
+
+  if (cacheDirty) writeCache(cache);
+  return acc;
 }
