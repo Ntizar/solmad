@@ -170,11 +170,14 @@ export function DetailPanel() {
               <Field k="Horario" v={t.horaIni && t.horaFin ? `${t.horaIni.slice(0, 5)} – ${t.horaFin.slice(0, 5)}` : '—'} />
             </div>
 
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${t.lat},${t.lng}&travelmode=walking`}
-              target="_blank" rel="noreferrer"
-              className="mt-5 block text-center bg-sun-300 text-night-900 font-medium rounded-xl py-3.5 hover:bg-sun-100 transition shadow-glow"
-            >🚶 Cómo llegar (Google Maps)</a>
+            <div className="mt-5 grid grid-cols-[1fr_auto] gap-2">
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${t.lat},${t.lng}&travelmode=walking`}
+                target="_blank" rel="noreferrer"
+                className="block text-center bg-sun-300 text-night-900 font-medium rounded-xl py-3.5 hover:bg-sun-100 transition shadow-glow"
+              >🚶 Cómo llegar (Google Maps)</a>
+              <ShareButton terraza={t} />
+            </div>
 
             <ContributionForm terraza={t} />
 
@@ -195,5 +198,36 @@ function Field({ k, v }: { k: string; v: string }) {
       <div className="text-[10px] uppercase tracking-widest text-paper/50">{k}</div>
       <div className="text-paper/90 truncate">{v}</div>
     </div>
+  );
+}
+
+function ShareButton({ terraza }: { terraza: { id: number; name: string } }) {
+  const [copied, setCopied] = useState(false);
+  const onShare = async () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('t', String(terraza.id));
+    const shareUrl = url.toString();
+    const text = `${terraza.name} en SolMAD`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'SolMAD', text, url: shareUrl });
+        return;
+      }
+    } catch { /* el usuario canceló: caemos a copiar */ }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch { /* ignore */ }
+  };
+  return (
+    <button
+      onClick={onShare}
+      aria-label="Compartir"
+      className="rounded-xl bg-white/10 hover:bg-white/20 text-paper px-4 py-3.5 text-sm font-medium transition"
+      title="Compartir esta terraza"
+    >
+      {copied ? '¡Copiado!' : '🔗 Compartir'}
+    </button>
   );
 }

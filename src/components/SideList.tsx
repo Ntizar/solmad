@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
 import { flyToTerraza } from './MapView';
@@ -9,13 +9,30 @@ function fmtHM(min: number) {
   return `${h}h ${String(m).padStart(2, '0')}`;
 }
 
+function distMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371000;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180, lat2 = b.lat * Math.PI / 180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 export function SideList() {
   const terrazas = useAppStore((s) => s.terrazas);
   const sunStates = useAppStore((s) => s.sunStates);
   const filters = useAppStore((s) => s.filters);
   const setFilters = useAppStore((s) => s.setFilters);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
+  const userLocation = useAppStore((s) => s.userLocation);
+  const vitaminaMode = useAppStore((s) => s.vitaminaMode);
+  const setVitaminaMode = useAppStore((s) => s.setVitaminaMode);
   const [open, setOpen] = useState(false);
+
+  // Cuando se activa vitaminaMode desde fuera, abrimos el panel automáticamente
+  useEffect(() => {
+    if (vitaminaMode) setOpen(true);
+  }, [vitaminaMode]);
 
   const ready = sunStates.size > 0;
 
@@ -27,8 +44,17 @@ export function SideList() {
   const filtered = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
     return terrazas
-      .map((t) => ({ t, sun: sunStates.get(t.id) }))
-      .filter(({ t, sun }) => {
+      .map((t) => ({
+        t,
+        sun: sunStates.get(t.id),
+        dist: userLocation ? distMeters(userLocation, { lat: t.lat, lng: t.lng }) : null,
+      }))
+      .filter(({ t, sun, dist }) => {
+        if (vitaminaMode) {
+          if (!sun || !sun.sunNow) return false;
+          if (!sun.directMinutes || sun.directMinutes < 30) return false;
+          if (dist != null && dist > 1500) return false; // 1.5 km
+        }
         if (filters.distrito && t.distrito !== filters.distrito) return false;
         if (filters.minHours && (!sun || sun.minutesLeft < filters.minHours * 60)) return false;
         if (filters.onlyOpenNow && (!sun || !sun.sunNow)) return false;
@@ -36,19 +62,22 @@ export function SideList() {
         return true;
       })
       .sort((a, b) => {
-        // Prioriza con sol AHORA, después por minutos restantes
+        if (vitaminaMode && userLocation) {
+          // Orden: cerca primero entre los que ya tienen sol y ≥30min
+          return (a.dist ?? Infinity) - (b.dist ?? Infinity);
+        }
         const aw = (a.sun?.sunNow ? 1e6 : 0) + (a.sun?.sunNow ? a.sun.directMinutes : a.sun?.minutesLeft ?? 0);
         const bw = (b.sun?.sunNow ? 1e6 : 0) + (b.sun?.sunNow ? b.sun.directMinutes : b.sun?.minutesLeft ?? 0);
         return bw - aw;
       })
       .slice(0, 80);
-  }, [terrazas, sunStates, filters]);
+  }, [terrazas, sunStates, filters, vitaminaMode, userLocation]);
   const pendingCount = Math.max(0, terrazas.length - sunStates.size);
 
   return (
     <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => { if (vitaminaMode) setVitaminaMode(false); setOpen((v) => !v); }}
         className="fixed top-4 left-4 z-30 rounded-full bg-night-700/85 backdrop-blur border border-white/10 px-4 py-2 text-paper/90 hover:text-sun-300 transition shadow-xl flex items-center gap-2"
       >
         <span className="font-display text-sm sm:text-base">{open ? 'Cerrar' : 'Top sol ahora'}</span>
@@ -71,13 +100,20 @@ export function SideList() {
           >
             <div className="p-4 pt-5 border-b border-white/10 space-y-2">
               <div className="flex items-center justify-between">
-                <h2 className="font-display text-2xl text-paper">Top sol ahora</h2>
+                <h2 className="font-display text-2xl text-paper">
+                  {vitaminaMode ? 'Vitamina D ya' : 'Top sol ahora'}
+                </h2>
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={() => { setOpen(false); setVitaminaMode(false); }}
                   aria-label="Cerrar lista"
                   className="rounded-full w-10 h-10 grid place-items-center bg-white/10 hover:bg-white/20 text-paper text-xl leading-none"
                 >×</button>
               </div>
+              {vitaminaMode && (
+                <div className="text-xs text-sun-300/90 italic">
+                  Sol ahora · ≥30 min de sol restantes{userLocation ? ' · ordenado por distancia' : ''}.
+                </div>
+              )}
               <input
                 value={filters.query}
                 onChange={(e) => setFilters({ query: e.target.value })}
@@ -120,15 +156,19 @@ export function SideList() {
 
             <ul className="flex-1 overflow-y-auto divide-y divide-white/5">
               {ready && filtered.length === 0 && (
-                <li className="p-6 text-paper/60 text-sm">Nada encaja con esos filtros. Prueba otra hora o distrito.</li>
+                <li className="p-6 text-paper/60 text-sm">
+                  {vitaminaMode
+                    ? 'Aún no hay terrazas con ≥30 min de sol cerca. Mueve el mapa o prueba el modo normal.'
+                    : 'Nada encaja con esos filtros. Prueba otra hora o distrito.'}
+                </li>
               )}
-              {filtered.map(({ t, sun }) => {
+              {filtered.map(({ t, sun, dist }) => {
                 const sunny = sun?.sunNow;
                 const min = sun ? (sunny ? sun.directMinutes : sun.minutesLeft) : 0;
                 return (
                   <li key={t.id}>
                     <button
-                      onClick={() => { setSelectedId(t.id); flyToTerraza(t); setOpen(false); }}
+                      onClick={() => { setSelectedId(t.id); flyToTerraza(t); setOpen(false); setVitaminaMode(false); }}
                       className="w-full text-left p-4 hover:bg-white/5 transition flex items-center gap-3"
                     >
                       <div className="w-7 h-7 grid place-items-center shrink-0 text-base">
@@ -136,7 +176,12 @@ export function SideList() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-display text-lg leading-tight truncate">{t.name}</div>
-                        <div className="text-xs text-paper/60 truncate">{t.via} {t.num} · {t.barrio}</div>
+                        <div className="text-xs text-paper/60 truncate">
+                          {t.via} {t.num} · {t.barrio}
+                          {dist != null && (
+                            <span className="text-paper/40"> · {dist < 1000 ? `${Math.round(dist)} m` : `${(dist/1000).toFixed(1)} km`}</span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right shrink-0">
                         {sun ? (

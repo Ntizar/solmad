@@ -9,6 +9,7 @@ import { SurpriseButton } from './components/SurpriseButton';
 import { FloatingTimeControl } from './components/FloatingTimeControl';
 import { LocationButton } from './components/LocationButton';
 import { MeNowBadge } from './components/MeNowBadge';
+import { VitaminaDButton } from './components/VitaminaDButton';
 import { SolarProgressBadge } from './components/SolarProgressBadge';
 import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
@@ -112,6 +113,37 @@ export function App() {
       );
     }).catch(() => undefined);
   }, [introDone, setGeoStatus]);
+
+  // Deep-link: ?t=ID al cargar selecciona y vuela; cambios en selectedId actualizan la URL.
+  const setSelectedIdAction = useAppStore((s) => s.setSelectedId);
+  const deepLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkAppliedRef.current) return;
+    if (terrazas.length === 0) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('t');
+      if (!raw) { deepLinkAppliedRef.current = true; return; }
+      const id = Number(raw);
+      const t = terrazas.find((x) => x.id === id);
+      if (t) {
+        setSelectedIdAction(id);
+        // Importación dinámica para evitar ciclos
+        import('./components/MapView').then(({ flyToTerraza }) => flyToTerraza(t));
+      }
+      deepLinkAppliedRef.current = true;
+    } catch { deepLinkAppliedRef.current = true; }
+  }, [terrazas, setSelectedIdAction]);
+
+  useEffect(() => {
+    if (!deepLinkAppliedRef.current) return; // evita pisar el ?t inicial antes de aplicarlo
+    try {
+      const url = new URL(window.location.href);
+      if (selectedId == null) url.searchParams.delete('t');
+      else url.searchParams.set('t', String(selectedId));
+      window.history.replaceState({}, '', url);
+    } catch { /* ignore */ }
+  }, [selectedId]);
 
   const startApp = () => {
     setAppStarted(true);
@@ -326,6 +358,7 @@ export function App() {
           {/* UI flotante */}
           <SurpriseButton />
           <LocationButton />
+          <VitaminaDButton />
           <MeNowBadge />
           <SolarProgressBadge />
           <SideList />

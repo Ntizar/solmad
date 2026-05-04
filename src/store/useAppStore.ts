@@ -32,6 +32,7 @@ interface State {
   selectedId: number | null;
   hoveredId: number | null;
   filters: Filters;
+  vitaminaMode: boolean;
   introDone: boolean;
   buildingsLoaded: boolean;
   userLocation: { lat: number; lng: number } | null;
@@ -43,6 +44,7 @@ interface State {
   setSelectedId: (id: number | null) => void;
   setHoveredId: (id: number | null) => void;
   setFilters: (p: Partial<Filters>) => void;
+  setVitaminaMode: (v: boolean) => void;
   setIntroDone: (v: boolean) => void;
   setBuildingsLoaded: (v: boolean) => void;
   setSunStates: (m: Map<number, SunState>) => void;
@@ -77,6 +79,7 @@ export const useAppStore = create<State>((set) => ({
   selectedId: null,
   hoveredId: null,
   filters: { distrito: null, query: '', minHours: 0, onlyOpenNow: true },
+  vitaminaMode: false,
   introDone: false,
   buildingsLoaded: false,
   userLocation: null,
@@ -87,6 +90,7 @@ export const useAppStore = create<State>((set) => ({
   setSelectedId: (id) => set({ selectedId: id }),
   setHoveredId: (id) => set({ hoveredId: id }),
   setFilters: (p) => set((s) => ({ filters: { ...s.filters, ...p } })),
+  setVitaminaMode: (v) => set({ vitaminaMode: v }),
   setIntroDone: (v) => set({ introDone: v }),
   setBuildingsLoaded: (v) => set({ buildingsLoaded: v }),
   setSunStates: (m) => set({ sunStates: m }),
