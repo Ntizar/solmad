@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": "1777998492315-e3188q",
+    "terraceId": 20413,
+    "terraceName": "S/R",
+    "contributorName": "Antizar",
+    "beerBrand": "Vino",
+    "price": 3,
+    "comment": "Buena Gilda",
+    "createdAt": "2026-05-05T16:28:12.315Z"
+  }
+]
