@@ -38438,5 +38438,205 @@
     "minutesLeft": 0,
     "directMinutes": 0,
     "updatedAt": "2026-05-07T06:53:35.644Z"
+  },
+  {
+    "id": 1076,
+    "key": "facade-v1|1076|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02970945178845,
+    "azimuthDeg": 190.83202287001018,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1062,
+    "key": "facade-v1|1062|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03139710211572,
+    "azimuthDeg": 190.8282451897976,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1066,
+    "key": "facade-v1|1066|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02876830825387,
+    "azimuthDeg": 190.8291089750703,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1074,
+    "key": "facade-v1|1074|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03515777737151,
+    "azimuthDeg": 190.8175074562606,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1080,
+    "key": "facade-v1|1080|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.0391302231163,
+    "azimuthDeg": 190.81567438369848,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1095,
+    "key": "facade-v1|1095|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03286816106021,
+    "azimuthDeg": 190.82812702412207,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1096,
+    "key": "facade-v1|1096|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03377418743916,
+    "azimuthDeg": 190.82249587038018,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1097,
+    "key": "facade-v1|1097|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03380503828795,
+    "azimuthDeg": 190.82315979358407,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1092,
+    "key": "facade-v1|1092|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03526288787353,
+    "azimuthDeg": 190.81557906476928,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1172,
+    "key": "facade-v1|1172|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02178132729446,
+    "azimuthDeg": 190.82790439836185,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1190,
+    "key": "facade-v1|1190|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02289476843893,
+    "azimuthDeg": 190.82883276495465,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1212,
+    "key": "facade-v1|1212|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02721028858745,
+    "azimuthDeg": 190.8185187938493,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1165,
+    "key": "facade-v1|1165|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03729386705196,
+    "azimuthDeg": 190.81879183546152,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1195,
+    "key": "facade-v1|1195|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02890718740124,
+    "azimuthDeg": 190.82140775093376,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1198,
+    "key": "facade-v1|1198|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02176285958487,
+    "azimuthDeg": 190.81668755807812,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1205,
+    "key": "facade-v1|1205|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.02638377517421,
+    "azimuthDeg": 190.81636289840026,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1215,
+    "key": "facade-v1|1215|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03908969917767,
+    "azimuthDeg": 190.83135734932614,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1223,
+    "key": "facade-v1|1223|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03672961302368,
+    "azimuthDeg": 190.8101186279772,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1151,
+    "key": "facade-v1|1151|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03030541802399,
+    "azimuthDeg": 190.82342961948814,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
+  },
+  {
+    "id": 1161,
+    "key": "facade-v1|1161|128|870",
+    "sunNow": false,
+    "altitudeDeg": 66.03005690460517,
+    "azimuthDeg": 190.82447319642006,
+    "minutesLeft": 0,
+    "directMinutes": 0,
+    "updatedAt": "2026-05-07T06:53:38.804Z"
   }
 ]
