@@ -42618,5 +42618,25 @@
     "minutesLeft": 564,
     "directMinutes": 564,
     "updatedAt": "2026-05-07T07:36:47.175Z"
+  },
+  {
+    "id": 19758,
+    "key": "facade-v1|19758|128|720",
+    "sunNow": true,
+    "altitudeDeg": 52.18128495092533,
+    "azimuthDeg": 118.6866527582564,
+    "minutesLeft": 564,
+    "directMinutes": 564,
+    "updatedAt": "2026-05-07T07:36:56.368Z"
+  },
+  {
+    "id": 19024,
+    "key": "facade-v1|19024|128|720",
+    "sunNow": true,
+    "altitudeDeg": 52.18387552453727,
+    "azimuthDeg": 118.68529847924026,
+    "minutesLeft": 564,
+    "directMinutes": 564,
+    "updatedAt": "2026-05-07T07:36:56.368Z"
   }
 ]
