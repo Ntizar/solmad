@@ -34888,5 +34888,15 @@
     "minutesLeft": 0,
     "directMinutes": 0,
     "updatedAt": "2026-05-07T06:27:39.628Z"
+  },
+  {
+    "id": 1161,
+    "key": "facade-v1|1161|128|510",
+    "sunNow": true,
+    "altitudeDeg": 13.70771643004996,
+    "azimuthDeg": 79.57395068193694,
+    "minutesLeft": 192,
+    "directMinutes": 108,
+    "updatedAt": "2026-05-07T06:27:41.908Z"
   }
 ]
