@@ -8,5 +8,17 @@
     "price": 3,
     "comment": "Buena Gilda",
     "createdAt": "2026-05-05T16:28:12.315Z"
+  },
+  {
+    "id": "1778140467920-ma6een",
+    "terraceId": 4210,
+    "terraceName": "BAR SANCHEZ",
+    "contributorName": "Pepe pollas",
+    "beerBrand": "Cruzcampo caliente",
+    "price": 5,
+    "sunFrom": "02:54",
+    "sunTo": "04:50",
+    "comment": "La camarera la chupa",
+    "createdAt": "2026-05-07T07:54:27.920Z"
   }
 ]
