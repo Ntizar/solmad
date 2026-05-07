@@ -20,5 +20,16 @@
     "sunTo": "04:50",
     "comment": "La camarera la chupa",
     "createdAt": "2026-05-07T07:54:27.920Z"
+  },
+  {
+    "id": "1778156006925-yetgza",
+    "terraceId": 1323,
+    "terraceName": "LIZARRAN",
+    "contributorName": "Borja Sandocán",
+    "beerBrand": "Alhambra especial",
+    "price": 7.8,
+    "sunFrom": "10:00",
+    "sunTo": "16:15",
+    "createdAt": "2026-05-07T12:13:26.925Z"
   }
 ]
