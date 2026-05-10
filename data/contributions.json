@@ -631,5 +631,17 @@
     "sunTo": "23:00",
     "comment": "que manera mas rara de enviar aportes xD",
     "createdAt": "2026-05-10T21:24:26.588Z"
+  },
+  {
+    "id": "1778448267302-ie1zln",
+    "terraceId": 6425,
+    "terraceName": "RTE. BOMBAY BLUE",
+    "contributorName": "Manolete",
+    "beerBrand": "Mahou",
+    "price": 2.9,
+    "sunFrom": "12:00",
+    "sunTo": "23:00",
+    "comment": "que manera mas rara de enviar aportes xD",
+    "createdAt": "2026-05-10T21:24:27.302Z"
   }
 ]
