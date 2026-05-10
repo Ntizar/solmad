@@ -31,5 +31,17 @@
     "sunFrom": "10:00",
     "sunTo": "16:15",
     "createdAt": "2026-05-07T12:13:26.925Z"
+  },
+  {
+    "id": "1778447424393-52ffdk",
+    "terraceId": 6425,
+    "terraceName": "RTE. BOMBAY BLUE",
+    "contributorName": "Manolete",
+    "beerBrand": "Mahou",
+    "price": 2.9,
+    "sunFrom": "12:00",
+    "sunTo": "23:00",
+    "comment": "Tapa buena",
+    "createdAt": "2026-05-10T21:10:24.394Z"
   }
 ]
