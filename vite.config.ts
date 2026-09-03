@@ -58,6 +58,15 @@ export default defineConfig({
             },
           },
           {
+            // Edificios del Ayto. de Madrid (ArcGIS). Stale-while-revalidate.
+            urlPattern: ({ url }) => /sigma\\.madrid\\.es/.test(url.hostname),
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'solmad-edificios-ayto',
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 7 },
+            },
+          },
+          {
             // Open-Meteo: meteo
             urlPattern: ({ url }) => url.hostname.includes('open-meteo.com'),
             handler: 'NetworkFirst',
