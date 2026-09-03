@@ -57,8 +57,15 @@ const terrazas = [
 
 // 21 de junio 2026, 09:00 UTC = 11:00 Madrid: sol al SE-E, alt media-alta
 const when = '2026-06-21T07:30:00.000Z'; // 09:30 Madrid, sol del este
+// MEDIR cache de slots: la 1ª vez computa el slot; la 2ª es lookup.
+const t0 = performance.now();
 const quick = api.quickForHuellas(terrazas, when);
+const t1 = performance.now();
+const quick2 = api.quickForHuellas(terrazas, when);
+const t2 = performance.now();
 console.log('quickForHuellas (1=este, 2=oeste):', Array.from(quick));
+console.log(`[cache] 1ª llamada ${(t1 - t0).toFixed(2)}ms | 2ª (mismo slot) ${(t2 - t1).toFixed(2)}ms`);
+if (t2 - t1 > (t1 - t0) * 0.5) console.warn('AVISO: la cache de slots no esta acelerando la 2ª llamada');
 // sol de manana (este): la terraza ESTE (1) debe tener sol (1), la OESTE (2) sombra (0)
 const [q1, q2] = quick;
 let ok = true;
