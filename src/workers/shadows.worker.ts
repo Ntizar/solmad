@@ -137,6 +137,67 @@ function sunlitCached(x: number, y: number, azDeg: number, altDeg: number): bool
   return res;
 }
 
+// ---- Cache por SLOT horario por terraza ("los días son iguales") ----
+// Para que mover el slider sea instantáneo en vez de re-raycastear todo,
+// computamos los 48 slots de media hora UNA vez por terraza y los cacheamos.
+// Al mover la hora solo hacemos un lookup por slot (O(1)).
+const SLOT_MIN = 30;
+const SLOT_COUNT = 48; // 0..47 (medias horas desde medianoche)
+// Cache por (terrazaId, ymd) -> estados[48]. Se llena INCREMENTALMENTE:
+// solo computamos el slot pedido, no los 48, para que la primera vista no tarde.
+const slotCache = new Map<number, { ymd: string; states: Uint8Array }>();
+const SLOT_CACHE_MAX = 8000;
+
+function slotIndexOf(when: Date): number {
+  const mins = when.getHours() * 60 + when.getMinutes();
+  return Math.min(SLOT_COUNT - 1, Math.floor(mins / SLOT_MIN));
+}
+
+function ymdOf(when: Date): string {
+  const d = new Date(when);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function slotSunPos(slot: number, lat: number, dayRef: Date): { az: number; al: number } {
+  const d = new Date(dayRef); d.setHours(0, 0, 0, 0);
+  d.setMinutes(slot * SLOT_MIN);
+  const p = SunCalc.getPosition(d, lat, -3.7038);
+  return {
+    az: ((p.azimuth * 180 / Math.PI) + 180 + 360) % 360,
+    al: p.altitude * 180 / Math.PI,
+  };
+}
+
+// Computa SOLO el slot pedido de una terraza (4 raycasts) y lo inserta en cache.
+function ensureSlot(terraza: Terraza, slot: number, dayRef: Date): number {
+  const idx = index;
+  const ymd = ymdOf(dayRef);
+  let entry = slotCache.get(terraza.id);
+  if (!entry || entry.ymd !== ymd) {
+    entry = { ymd, states: new Uint8Array(SLOT_COUNT).fill(255) }; // 255 = no computado
+    if (slotCache.size >= SLOT_CACHE_MAX) slotCache.clear();
+    slotCache.set(terraza.id, entry);
+  }
+  if (entry.states[slot] !== 255) return entry.states[slot]; // ya computado
+
+  const h = huellas?.get(terraza.id);
+  const pts: [number, number][] = h
+    ? h.samples.map((s) => (idx ? idx.toM(s[0], s[1]) : [0, 0]) as [number, number])
+    : (idx ? [idx.toM(terraza.lng, terraza.lat)] : [[0, 0]]);
+  const { az, al } = slotSunPos(slot, terraza.lat, dayRef);
+  if (al <= 0) { entry.states[slot] = 2; return 2; }        // noche
+  if (!idx || idx.grid.size === 0) { entry.states[slot] = 3; return 3; } // sin edificios
+  let lit = 0;
+  for (const p of pts) if (pts.length && sunlitCached(p[0], p[1], az, al)) lit++;
+  const state = pts.length && lit / pts.length >= 0.25 ? 1 : 0;
+  entry.states[slot] = state;
+  return state;
+}
+
+function cachedSlotState(terraza: Terraza, slot: number, when: Date): number {
+  return ensureSlot(terraza, slot, when);
+}
+
 function closestPointOnSeg(px: number, py: number, s: Seg): { dist: number; px: number; py: number } {
   const vx = s.bx - s.ax, vy = s.by - s.ay;
   const len2 = vx * vx + vy * vy;
@@ -257,6 +318,10 @@ const api = {
   setBuildings(buildings: BuildingPoly[], originLng: number, originLat: number) {
     index = new SegIndex();
     index.build(buildings, originLng, originLat);
+    // Al cambiar los edificios, los slots y raycasts cacheados quedan obsoletos:
+    // hay que recalcularlos (sobre todo los marcados pendiente).
+    slotCache.clear();
+    solCache.clear();
     return { segments: [...index.grid.values()].reduce((a, b) => a + b.length, 0) };
   },
 
@@ -342,30 +407,18 @@ const api = {
     return results;
   },
 
-  /** Quick masivo por huella: solo el % ahora. Estados 0=sombra 1=sol 2=noche 3=pendiente. */
+  /** Quick por slot: computa solo el slot pedido y lo cachea. */
   quickForHuellas(terrazas: Terraza[], whenIso: string): Uint8Array {
     const when = new Date(whenIso);
+    const slot = slotIndexOf(when);
     const out = new Uint8Array(terrazas.length);
     const idx = index;
     const noBuildings = !idx || idx.grid.size === 0;
     for (let i = 0; i < terrazas.length; i++) {
       const t = terrazas[i];
-      const { az, al } = sunPos(when, t.lat, t.lng);
-      if (al <= 0) { out[i] = 2; continue; }
-      if (noBuildings) { out[i] = 3; continue; }
-      const h = huellas?.get(t.id);
-      // Sin huella: no degradar a pendiente; calcular por el punto central (motor v1).
-      if (!h) {
-        const [ox, oy] = idx!.toM(t.lng, t.lat);
-        out[i] = isSunlit(ox, oy, az, al) ? 1 : 0;
-        continue;
-      }
-      let lit = 0;
-      for (const s of h.samples) {
-        const [ox, oy] = idx!.toM(s[0], s[1]);
-        if (sunlitCached(ox, oy, az, al)) lit++;
-      }
-      out[i] = lit / h.samples.length >= 0.25 ? 1 : 0;
+      if (noBuildings) { out[i] = 3; continue; } // pendiente (sin edificios)
+      // Computa/cachea el slot pedido (4 raycasts primera vez, lookup después).
+      out[i] = cachedSlotState(t, slot, when);
     }
     return out;
   },
