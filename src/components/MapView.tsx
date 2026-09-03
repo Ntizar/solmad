@@ -10,8 +10,12 @@ import type { BuildingPoly, Terraza } from '../lib/types';
 
 const MADRID_CENTER: [number, number] = [40.4168, -3.7038];
 
-const VOYAGER_TILES = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const CARTO_LIGHT_TILES = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+// Mapas base IGN (Instituto Geográfico Nacional) — libres CC BY 4.0, sin CARTO.
+const IGN_TILES = (layer: string) =>
+  `https://www.ign.es/wmts/ign-base?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${layer}&STYLE=default&TILEMATRIXSET=GoogleMapsCompatible&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&FORMAT=image/jpeg`;
+const IGN_TILES_TODO = IGN_TILES('IGNBaseTodo');
+const IGN_TILES_GRIS = IGN_TILES('IGNBase-gris');
+const IGN_TILES_ORTO = IGN_TILES('IGNBaseOrto');
 const HOT_TILES = 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png';
 const OSM_TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const M_PER_DEG_LAT = 111_320;
@@ -99,6 +103,7 @@ export function MapView() {
 
   const terrazas = useAppStore((s) => s.terrazas);
   const buildings = useAppStore((s) => s.buildings);
+  const huellas = useAppStore((s) => s.huellas);
   const quickSun = useAppStore((s) => s.quickSun);
   const selectedDate = useAppStore((s) => s.selectedDate);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
@@ -109,6 +114,7 @@ export function MapView() {
 
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const huellaLayerRef = useRef<L.LayerGroup | null>(null);
 
   const sunIcon = useMemo(() => makeSunIcon(), []);
   const shadowIcon = useMemo(() => makeShadowIcon(), []);
@@ -141,18 +147,17 @@ export function MapView() {
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    const voyager = L.tileLayer(VOYAGER_TILES, {
-      attribution: '© OpenStreetMap contributors · © CARTO',
-      maxZoom: 20,
-      subdomains: ['a', 'b', 'c', 'd'],
+    // Capa base preferida: IGN topográfica (libre, CC BY 4.0). Fallback a gris y OSM.
+    const ignTodo = L.tileLayer(IGN_TILES_TODO, {
+      attribution: '© IGN — Instituto Geográfico Nacional (CC BY 4.0)',
+      maxZoom: 19,
       detectRetina: true,
       crossOrigin: true
     });
 
-    const cartoLight = L.tileLayer(CARTO_LIGHT_TILES, {
-      attribution: '© OpenStreetMap contributors · © CARTO',
+    const ignGris = L.tileLayer(IGN_TILES_GRIS, {
+      attribution: '© IGN — Instituto Geográfico Nacional (CC BY 4.0)',
       maxZoom: 19,
-      subdomains: ['a', 'b', 'c', 'd'],
       detectRetina: true,
       crossOrigin: true
     });
@@ -166,12 +171,12 @@ export function MapView() {
 
     const hot = L.tileLayer(HOT_TILES, {
       attribution: '© OpenStreetMap contributors · Tiles courtesy of HOT',
-      maxZoom: 20,
+      maxZoom: 19,
       subdomains: ['a', 'b', 'c'],
       crossOrigin: true
     });
 
-    const tileLayers = [voyager, cartoLight, osm, hot];
+    const tileLayers = [ignTodo, ignGris, osm, hot];
     const onLoad = () => setTilesLoaded(true);
     tileLayers.forEach((layer) => layer.on('load tileload', onLoad));
     const fallback = () => {
@@ -185,13 +190,14 @@ export function MapView() {
       map.removeLayer(current);
       next.addTo(map);
     };
-    voyager.on('tileerror', fallback);
-    cartoLight.on('tileerror', fallback);
+    ignTodo.on('tileerror', fallback);
+    ignGris.on('tileerror', fallback);
     osm.on('tileerror', fallback);
     hot.on('tileerror', () => setMapError('No se han podido descargar las teselas del mapa.'));
-    voyager.addTo(map);
+    ignTodo.addTo(map);
 
     shadowLayerRef.current = L.layerGroup().addTo(map);
+    huellaLayerRef.current = L.layerGroup().addTo(map);
     terraceLayerRef.current = L.markerClusterGroup({
       chunkedLoading: true,
       removeOutsideVisibleBounds: true,
@@ -221,6 +227,7 @@ export function MapView() {
       map.remove();
       mapRef.current = null;
       shadowLayerRef.current = null;
+      huellaLayerRef.current = null;
       terraceLayerRef.current = null;
       userLayerRef.current = null;
       terraceMarkersRef.current.clear();
@@ -281,6 +288,63 @@ export function MapView() {
       if (rafId) window.cancelAnimationFrame(rafId);
     };
   }, [buildings, selectedDate]);
+
+  // HUELLAS (fase 1): rectangulos de terraza sobre la acera, coloreados por
+  // estado solar. Solo en zoom de acera (>=16) para no saturar la vista ciudad.
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = huellaLayerRef.current;
+    if (!map || !layer) return;
+
+    const HUELLA_ZOOM_MIN = 15;
+    const colors: Record<number, { fill: string; opacity: number; stroke: string }> = {
+      0: { fill: '#6b7a8f', opacity: 0.35, stroke: '#55606e' },  // sombra
+      1: { fill: '#f5b942', opacity: 0.55, stroke: '#d99a1c' },  // sol
+      2: { fill: '#3a4453', opacity: 0.30, stroke: '#2e3644' },  // noche
+      3: { fill: '#9aa3ad', opacity: 0.25, stroke: '#8a929c' },  // pendiente
+    };
+
+    const doRender = () => {
+      layer.clearLayers();
+      if (!huellas || map.getZoom() < HUELLA_ZOOM_MIN) return;
+      const bounds = map.getBounds().pad(0.15);
+      let drawn = 0;
+      for (const terraza of terrazas) {
+        if (drawn >= 500) break;
+        const h = huellas[terraza.id];
+        if (!h) continue;
+        if (!h.ring.some(([lng, lat]) => bounds.contains([lat, lng]))) continue;
+        // estado actual de esta terraza (por id)
+        const idx = terrazas.indexOf(terraza);
+        const rawState = quickSun ? quickSun[idx] : 3;
+        const state = rawState === 255 ? 3 : rawState;
+        const c = colors[state] ?? colors[3];
+        L.polygon(h.ring.map(([lng, lat]) => [lat, lng] as L.LatLngExpression), {
+          color: c.stroke,
+          weight: 1,
+          fillColor: c.fill,
+          fillOpacity: c.opacity,
+          interactive: true,
+          bubblingMouseEvents: false
+        })
+          .on('click', () => setSelectedId(terraza.id))
+          .addTo(layer);
+        drawn++;
+      }
+    };
+
+    let rafId = 0;
+    const schedule = () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(doRender);
+    };
+    schedule();
+    map.on('moveend zoomend', schedule);
+    return () => {
+      map.off('moveend zoomend', schedule);
+      if (rafId) window.cancelAnimationFrame(rafId);
+    };
+  }, [huellas, terrazas, quickSun, setSelectedId]);
 
   useEffect(() => {
     const layer = terraceLayerRef.current;
