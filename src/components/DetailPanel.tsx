@@ -143,9 +143,14 @@ export function DetailPanel() {
             <div className={`mt-5 rounded-2xl px-4 py-4 ${status.cls}`}>
               <div className="flex items-baseline justify-between">
                 <span className="font-display text-2xl">{status.tag}</span>
-                {sun && sunNowEffective && currentDirectMinutes > 0 && (
-                  <span className="font-mono text-lg tabular-nums">{fmtHM(currentDirectMinutes)}</span>
-                )}
+                <span className="flex items-baseline gap-2">
+                  {sun && sunNowEffective && currentDirectMinutes > 0 && (
+                    <span className="font-mono text-lg tabular-nums">{fmtHM(currentDirectMinutes)}</span>
+                  )}
+                  {sun && typeof sun.sunNowPct === 'number' && (
+                    <span className="text-xs text-paper/70">· {sun.sunNowPct}% de la terraza</span>
+                  )}
+                </span>
               </div>
               <p className={`text-sm mt-1 ${status.cls.includes('night-900') ? 'text-night-900/75' : 'text-paper/75'}`}>
                 {!sun && quickState === -1 && 'Cargando edificios cercanos para estimar esta fachada.'}

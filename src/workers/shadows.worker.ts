@@ -403,15 +403,23 @@ const api = {
   ribbonFor(t: Terraza, whenIso: string): number[] {
     const when = new Date(whenIso);
     const idx = index;
-    const [ox, oy] = idx ? idx.toM(t.lng, t.lat) : [0, 0];
+    const h = huellas?.get(t.id);
+    const pts: [number, number][] = h
+      ? h.samples.map((s) => (idx ? idx.toM(s[0], s[1]) : [0, 0]) as [number, number])
+      : (idx ? [idx.toM(t.lng, t.lat)] : [[0, 0]]);
     const ribbon: number[] = new Array(48);
     const day = new Date(when); day.setHours(0, 0, 0, 0);
     for (let k = 0; k < 48; k++) {
       const d = new Date(day.getTime() + k * RIBBON_STEP_MIN * 60_000);
       const { az, al } = sunPos(d, t.lat, t.lng);
       if (al <= 0) ribbon[k] = 2;
-      else {
-        const lit = facadeLitAt(ox, oy, az, al);
+      else if (h || idx?.grid?.size) {
+        // Motor v2 por huella: sol si >=25% de las muestras están soleadas.
+        let lit = 0;
+        for (const p of pts) if (isSunlit(p[0], p[1], az, al)) lit++;
+        ribbon[k] = pts.length ? (lit / pts.length >= 0.25 ? 1 : 0) : 0;
+      } else {
+        const lit = facadeLitAt(pts[0][0], pts[0][1], az, al);
         ribbon[k] = lit === true ? 1 : 0;
       }
     }

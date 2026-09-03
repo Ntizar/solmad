@@ -7,3 +7,4 @@ dist
 tsconfig.tsbuildinfo
 public/terrazas.min.json
 data/vias-madrid.json
+scripts/*.test-bundle.mjs
