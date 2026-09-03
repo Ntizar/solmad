@@ -273,9 +273,10 @@ const api = {
     for (let i = 0; i < terrazas.length; i++) {
       const t = terrazas[i];
       const h = huellas?.get(t.id);
+      // Sin huella: usar el punto central (motor v1) para no degradar a pendiente.
       const pts: [number, number][] = h
         ? h.samples.map((s) => (idx ? idx.toM(s[0], s[1]) : [0, 0]) as [number, number])
-        : [[0, 0]];
+        : (idx ? [idx.toM(t.lng, t.lat)] : [[0, 0]]);
 
       const { az: azNow, al: altNow } = sunPos(when, t.lat, t.lng);
 
@@ -332,7 +333,12 @@ const api = {
       if (al <= 0) { out[i] = 2; continue; }
       if (noBuildings) { out[i] = 3; continue; }
       const h = huellas?.get(t.id);
-      if (!h) { out[i] = 3; continue; }
+      // Sin huella: no degradar a pendiente; calcular por el punto central (motor v1).
+      if (!h) {
+        const [ox, oy] = idx!.toM(t.lng, t.lat);
+        out[i] = isSunlit(ox, oy, az, al) ? 1 : 0;
+        continue;
+      }
       let lit = 0;
       for (const s of h.samples) {
         const [ox, oy] = idx!.toM(s[0], s[1]);
