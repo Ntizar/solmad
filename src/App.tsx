@@ -13,6 +13,7 @@ import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
 import { loadHuellas } from './lib/huellas';
 import { fetchBuildings } from './lib/buildings';
+import { enrichBuildingsAlturas } from './lib/buildings';
 import { shadowsApi } from './workers/shadowsClient';
 import type { Terraza } from './lib/types';
 import { fetchRemoteSunCache, getLocalSunCache, saveRemoteSunCache, setLocalSunCache, type CachedSunState } from './lib/sunCache';
@@ -263,16 +264,26 @@ export function App() {
         if (seq !== buildingSeqRef.current) return;
         await partialQueue;
         if (seq !== buildingSeqRef.current) return;
-        // El origen (ArcGIS del Ayto.) ya trae la altura oficial de cada edificio,
-        // así que no hace falta un paso extra de enriquecimiento. Reindexamos con
-        // lo descargado (geometría simplificada + altura ya incluida).
-        if (fetched.length > 0) {
-          await api.setBuildings(fetched, originLng, originLat);
-          setBuildings(fetched);
-        }
+        // Enriquece alturas con datos oficiales del Ayto. (CC BY 4.0), no bloqueante:
+        // reindexa al final con las alturas reales para sombras 3D más fieles.
+        // Bbox acotado al centro de la vista (el servicio limita a ~8000 features).
+        try {
+          const enrichBbox: [number, number, number, number] = [
+            Math.max(south, originLat - 0.004),
+            Math.max(west, originLng - 0.006),
+            Math.min(north, originLat + 0.004),
+            Math.min(east, originLng + 0.006),
+          ];
+          const enriched = await enrichBuildingsAlturas(fetched, enrichBbox);
+          if (seq !== buildingSeqRef.current) return;
+          if (enriched.length === fetched.length && enriched.length > 0) {
+            await api.setBuildings(enriched, originLng, originLat);
+            setBuildings(enriched);
+          }
+        } catch { /* mantener alturas OSM */ }
         setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       } catch (err) {
-        console.warn('[solmad] Falló la carga de edificios, usando modo sin sombras:', err);
+        console.warn('[solmad] Overpass falló, usando modo sin sombras:', err);
         setSolarProgress({ phase: 'idle', done: 0, total: 0, message: '' });
       }
     })();
