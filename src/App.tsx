@@ -13,6 +13,7 @@ import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
 import { loadHuellas } from './lib/huellas';
 import { fetchBuildings } from './lib/buildings';
+import { enrichBuildingsAlturas } from './lib/buildings';
 import { shadowsApi } from './workers/shadowsClient';
 import type { Terraza } from './lib/types';
 import { fetchRemoteSunCache, getLocalSunCache, saveRemoteSunCache, setLocalSunCache, type CachedSunState } from './lib/sunCache';
@@ -212,7 +213,7 @@ export function App() {
     (async () => {
       const api = shadowsApi();
       try {
-        const buildings = await fetchBuildings([south, west, north, east], {
+        const fetched = await fetchBuildings([south, west, north, east], {
           signal: cancelToken,
           onProgress: (done, total) => {
             if (seq !== buildingSeqRef.current) return;
@@ -232,6 +233,23 @@ export function App() {
         if (seq !== buildingSeqRef.current) return;
         await partialQueue;
         if (seq !== buildingSeqRef.current) return;
+        // Enriquece alturas con datos oficiales del Ayto. (CC BY 4.0), no bloqueante:
+        // reindexa al final con las alturas reales para sombras 3D más fieles.
+        // Bbox acotado al centro de la vista (el servicio limita a ~8000 features).
+        try {
+          const enrichBbox: [number, number, number, number] = [
+            Math.max(south, originLat - 0.004),
+            Math.max(west, originLng - 0.006),
+            Math.min(north, originLat + 0.004),
+            Math.min(east, originLng + 0.006),
+          ];
+          const enriched = await enrichBuildingsAlturas(fetched, enrichBbox);
+          if (seq !== buildingSeqRef.current) return;
+          if (enriched.length === fetched.length && enriched.length > 0) {
+            await api.setBuildings(enriched, originLng, originLat);
+            setBuildings(enriched);
+          }
+        } catch { /* mantener alturas OSM */ }
         setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       } catch (err) {
         console.warn('[solmad] Overpass falló, usando modo sin sombras:', err);
@@ -318,7 +336,9 @@ export function App() {
         return;
       }
       const api = shadowsApi();
-      const states = await api.facadeStateFor(missing, selectedDate.toISOString());
+      const states = huellas
+        ? await (api as any).computeForHuellas(missing, selectedDate.toISOString())
+        : await api.facadeStateFor(missing, selectedDate.toISOString());
       if (seq !== fullSeqRef.current) return;
       const entries: Array<[number, typeof states[number]]> = [];
       const cacheRows: CachedSunState[] = [];
@@ -335,7 +355,7 @@ export function App() {
       setSolarProgress({ phase: 'idle', done: targets.length, total: targets.length, message: '' });
     }, 260);
     return () => { if (fullDebRef.current) clearTimeout(fullDebRef.current); };
-  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, sunStateCache, mergeSunStates, setSunStateCacheEntries]);
+  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, huellas, sunStateCache, mergeSunStates, setSunStateCacheEntries]);
 
   useEffect(() => {
     resetSunStates();
@@ -355,7 +375,9 @@ export function App() {
     (async () => {
       try {
         if (!cached) {
-          const [state] = await shadowsApi().facadeStateFor([terraza], selectedDate.toISOString());
+          const [state] = huellas
+            ? await (shadowsApi() as any).computeForHuellas([terraza], selectedDate.toISOString())
+            : await shadowsApi().facadeStateFor([terraza], selectedDate.toISOString());
           if (seq !== selectedSeqRef.current) return;
           const row = toCachedSunState(terraza.id, stateKey, state);
           setLocalSunCache(row);
@@ -372,7 +394,7 @@ export function App() {
         if (seq === selectedSeqRef.current) setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
       }
     })();
-  }, [selectedId, buildingsLoaded, buildings, terrazas, selectedDate, sunStateCache, mergeSunStates, setSunStateCacheEntries, setRibbonCache, setSelectedPending]);
+  }, [selectedId, buildingsLoaded, buildings, terrazas, selectedDate, huellas, sunStateCache, mergeSunStates, setSunStateCacheEntries, setRibbonCache, setSelectedPending]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-night-700">

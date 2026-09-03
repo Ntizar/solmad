@@ -5,10 +5,14 @@ const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.osm.ch/api/interpreter'
 ];
+// Alturas oficiales del Ayto. de Madrid (CC BY 4.0). Mejor que OSM levels*3.2.
+const SIGMA_ALTURAS_URL = 'https://sigma.madrid.es/hosted/rest/services/CARTOGRAFIA/EDIFICIOS_ALTURAS/MapServer/0/query';
 const DEFAULT_HEIGHT_M = 10;
 const LEVEL_HEIGHT_M = 3.2;
 const TILE_CACHE_KEY = 'solmad:buildings:tiles:v1';
+const ALTURAS_CACHE_KEY = 'solmad:buildings:alturas:v1';
 const TILE_TTL_MS = 1000 * 60 * 60 * 24 * 3; // 3 días por tile
+const ALTURAS_TTL_MS = 1000 * 60 * 60 * 24 * 30; // alturas oficiales: 1 mes
 const TILE_SIZE_DEG = 0.012; // ~1.3km. Más fácil de cachear y reusar al panear.
 
 interface TileEntry { ts: number; data: BuildingPoly[]; }
@@ -203,4 +207,114 @@ export async function fetchBuildings(
 
   if (cacheDirty) writeCache(cache);
   return acc;
+}
+
+// ---- Alturas oficiales del Ayto. de Madrid (CC BY 4.0) ----
+// Un edificio OSM se enriquece con su altura real si cae cerca de un polígono
+// oficial. Sin matching, conserva la altura de OSM. Fallback silencioso.
+
+const ENRICH_RADIUS_M = 35; // radio de matching entre centroide OSM y polígono oficial
+
+interface AlturaEntry { lat: number; lng: number; height: number; }
+
+function readAlturasCache(): Record<string, { ts: number; data: AlturaEntry[] }> {
+  try {
+    const raw = localStorage.getItem(ALTURAS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function writeAlturasCache(cache: Record<string, { ts: number; data: AlturaEntry[] }>) {
+  try {
+    const now = Date.now();
+    for (const k of Object.keys(cache)) if (now - cache[k].ts > ALTURAS_TTL_MS) delete cache[k];
+    localStorage.setItem(ALTURAS_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* quota */ }
+}
+
+function polygonCentroid(ring: [number, number][]): [number, number] {
+  // WGS84 lng/lat → punto medio simple (suficiente para matching a 35m).
+  let sx = 0, sy = 0;
+  for (const [lng, lat] of ring) { sx += lng; sy += lat; }
+  return [sy / ring.length, sx / ring.length]; // [lat, lng]
+}
+
+function haversineM(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371000;
+  const dLat = (bLat - aLat) * Math.PI / 180;
+  const dLng = (bLng - aLng) * Math.PI / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/** Query al ArcGIS de alturas por bbox (el servicio acepta WGS84 directamente). */
+async function fetchAlturasForClock(bboxWgs84: [number, number, number, number]): Promise<AlturaEntry[]> {
+  const [s, w, n, e] = bboxWgs84;
+  // El servicio de alturas acepta el bbox en EPSG:4326 (WGS84) sin conversión.
+  const geometry = `${w},${s},${e},${n}`;
+  const params = new URLSearchParams({
+    f: 'json',
+    where: '1=1',
+    geometry,
+    geometryType: 'esriGeometryEnvelope',
+    spatialRel: 'esriSpatialRelIntersects',
+    inSR: '4326',
+    outSR: '4326',
+    returnGeometry: 'true',
+    outFields: 'ALTURA,Z_EDIFICIO_CAMBIO_ALTURA,Z_EDIFICIO_HUELLA',
+    resultRecordCount: '8000',
+  });
+  try {
+    const res = await fetch(`${SIGMA_ALTURAS_URL}?${params.toString()}`);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const features: any[] = json.features ?? [];
+    const out: AlturaEntry[] = [];
+    for (const f of features) {
+      const attrs = f?.attributes ?? {};
+      const poly = f?.geometry?.rings?.[0];
+      if (!poly) continue;
+      let height = Number(attrs.ALTURA);
+      if (!Number.isFinite(height) || height <= 0) {
+        height = Number(attrs.Z_EDIFICIO_CAMBIO_ALTURA) - Number(attrs.Z_EDIFICIO_HUELLA);
+      }
+      if (!Number.isFinite(height) || height <= 0) continue;
+      // rings → [[lng,lat]...]
+      const ring: [number, number][] = poly.map((p: [number, number]) => [p[0], p[1]]);
+      const [lat, lng] = polygonCentroid(ring);
+      out.push({ lat, lng, height });
+    }
+    return out;
+  } catch { return []; }
+}
+
+/**
+ * Enriquece edificios con alturas oficiales del Ayto. (CC BY 4.0).
+ * Indempotente y con fallback: si el servicio falla, mantiene la altura OSM.
+ */
+export async function enrichBuildingsAlturas(buildings: BuildingPoly[], bboxWgs84: [number, number, number, number]) {
+  if (buildings.length === 0) return buildings;
+  try {
+    const cache = readAlturasCache();
+    const key = bboxWgs84.map((n) => n.toFixed(4)).join('|');
+    let entries: AlturaEntry[] | null = null;
+    const cached = cache[key];
+    if (cached && Date.now() - cached.ts <= ALTURAS_TTL_MS) entries = cached.data;
+    if (!entries) {
+      entries = await fetchAlturasForClock(bboxWgs84);
+      cache[key] = { ts: Date.now(), data: entries };
+      writeAlturasCache(cache);
+    }
+    // Matchear cada OSM con el edificio oficial más cercano.
+
+    return buildings.map((b) => {
+      const [lat, lng] = polygonCentroid(b.ring);
+      let best: AlturaEntry | null = null, bestD = ENRICH_RADIUS_M;
+      for (const e of entries) {
+        const d = haversineM(lat, lng, e.lat, e.lng);
+        if (d < bestD) { best = e; bestD = d; }
+      }
+      return best ? { ...b, height: best.height } : b;
+    });
+  } catch { return buildings; }
 }
