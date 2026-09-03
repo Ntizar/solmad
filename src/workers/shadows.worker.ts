@@ -116,6 +116,27 @@ class SegIndex {
 let index: SegIndex | null = null;
 let huellas: Map<number, Huella> | null = null;
 
+// ---- Memo solar por ángulo cuantizado ----
+// El sol se mueve ~1° por día. Si cacheamos el resultado de isSunlit por
+// (punto x,y en metros, az/al del sol cuantizados a 0.5°), entonces el mismo
+// "HH:MM" de días cercanos devuelve el mismo resultado sin recalcular el rayo.
+// Esto aprovecha que los días son casi idénticos: el patrón solar apenas cambia.
+const solCache = new Map<string, boolean>();
+const SOL_CACHE_MAX = 150_000; // tope para no crecer sin límite
+
+/** isSunlit memoizado por (x, y, az, al). La posición se cuantiza a 0.5°. */
+function sunlitCached(x: number, y: number, azDeg: number, altDeg: number): boolean {
+  const az = Math.round(azDeg * 2) / 2;      // 0.5° de resolución azimut
+  const al = Math.round(altDeg * 2) / 2;     // 0.5° de resolución altitud
+  const key = Math.round(x) + '|' + Math.round(y) + '|' + az + '|' + al;
+  const cached = solCache.get(key);
+  if (cached !== undefined) return cached;
+  const res = isSunlit(x, y, az, al);
+  if (solCache.size >= SOL_CACHE_MAX) solCache.clear();
+  solCache.set(key, res);
+  return res;
+}
+
 function closestPointOnSeg(px: number, py: number, s: Seg): { dist: number; px: number; py: number } {
   const vx = s.bx - s.ax, vy = s.by - s.ay;
   const len2 = vx * vx + vy * vy;
@@ -286,7 +307,7 @@ const api = {
         if (!idx || idx.grid.size === 0) {
           litNow = 3; // pendiente (sin edificios)
         } else {
-          for (const p of pts) if (isSunlit(p[0], p[1], azNow, altNow)) litNow++;
+          for (const p of pts) if (sunlitCached(p[0], p[1], azNow, altNow)) litNow++;
           litNow = Math.round((litNow / pts.length) * 100);
         }
       }
@@ -300,7 +321,7 @@ const api = {
         if (s.al <= 0) continue;
         let lit = 0;
         if (idx && idx.grid.size > 0) {
-          for (const p of pts) if (isSunlit(p[0], p[1], s.az, s.al)) lit++;
+          for (const p of pts) if (sunlitCached(p[0], p[1], s.az, s.al)) lit++;
           lit = Math.round((lit / pts.length) * 100);
         }
         const soleada = lit >= 25;
@@ -342,7 +363,7 @@ const api = {
       let lit = 0;
       for (const s of h.samples) {
         const [ox, oy] = idx!.toM(s[0], s[1]);
-        if (isSunlit(ox, oy, az, al)) lit++;
+        if (sunlitCached(ox, oy, az, al)) lit++;
       }
       out[i] = lit / h.samples.length >= 0.25 ? 1 : 0;
     }
@@ -416,7 +437,7 @@ const api = {
       else if (h || idx?.grid?.size) {
         // Motor v2 por huella: sol si >=25% de las muestras están soleadas.
         let lit = 0;
-        for (const p of pts) if (isSunlit(p[0], p[1], az, al)) lit++;
+        for (const p of pts) if (sunlitCached(p[0], p[1], az, al)) lit++;
         ribbon[k] = pts.length ? (lit / pts.length >= 0.25 ? 1 : 0) : 0;
       } else {
         const lit = facadeLitAt(pts[0][0], pts[0][1], az, al);

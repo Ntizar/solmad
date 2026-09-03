@@ -36,6 +36,37 @@ function sunCacheKey(terrazaId: number, date: Date) {
   return `facade-v1|${terrazaId}|${day}|${rounded}`;
 }
 
+// ---- Quick cache persistente por slot horario (días casi idénticos) ----
+// El sol se mueve ~1° al día. Para el mismo "HH:MM" (slot de 30 min), el estado
+// sol/sombra de una terraza apenas cambia entre días cercanos. Guardamos en
+// localStorage el resultado del quick por slot para que, al cambiar de hora o
+// de día, aparezca al instante sin recalcular todo el raycast.
+const QUICK_CACHE_KEY = 'solmad:quickSun:v1';
+const QUICK_SLOT_MIN = 30;
+
+function quickSlotIndex(date: Date): number {
+  const mins = date.getHours() * 60 + date.getMinutes();
+  return Math.min(47, Math.round(mins / QUICK_SLOT_MIN));
+}
+function readQuickCache(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(QUICK_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+function writeQuickCache(map: Record<string, number>) {
+  try {
+    // Mantener acotado
+    const keys = Object.keys(map);
+    if (keys.length > 6000) { for (const k of keys.slice(0, 1000)) delete map[k]; }
+    localStorage.setItem(QUICK_CACHE_KEY, JSON.stringify(map));
+  } catch { /* quota */ }
+}
+/** clave del quick por slot (independiente del día => reutiliza entre días) */
+function quickCacheKey(terrazaId: number, slot: number) {
+  return `q|${terrazaId}|${slot}`;
+}
+
 function toCachedSunState(id: number, key: string, state: CachedSunState | any): CachedSunState {
   return { id, key, ...state, updatedAt: new Date().toISOString() };
 }
@@ -282,22 +313,48 @@ export function App() {
     if (quickDebRef.current) clearTimeout(quickDebRef.current);
     quickDebRef.current = window.setTimeout(async () => {
       const api = shadowsApi();
-      let partial: Uint8Array;
-      try {
-        partial = huellas
-          ? await (api as any).quickForHuellas(targets, selectedDate.toISOString())
-          : await api.facadeQuickFor(targets, selectedDate.toISOString());
-      } catch {
-        partial = await api.facadeQuickFor(targets, selectedDate.toISOString());
-      }
-      if (seq !== quickSeqRef.current) return;
-      const u = new Uint8Array(terrazas.length);
-      u.fill(255);
+      const slot = quickSlotIndex(selectedDate);
+      const qCache = readQuickCache();
+      // 1) Respuesta inmediata: estados cacheados por slot (días casi iguales).
+      const cachedU = new Uint8Array(targets.length);
+      cachedU.fill(255);
+      let cachedCount = 0;
       targets.forEach((t, index) => {
-        const globalIndex = terrazas.findIndex((x) => x.id === t.id);
-        if (globalIndex >= 0) u[globalIndex] = partial[index];
+        const v = qCache[quickCacheKey(t.id, slot)];
+        if (v !== undefined) { cachedU[index] = v; cachedCount++; }
       });
-      setQuickSun(u);
+      // Buffer sobre terrazas (pintado incrementalmente).
+      const u0 = new Uint8Array(terrazas.length);
+      u0.fill(255);
+      if (cachedCount > 0) {
+        targets.forEach((t, index) => {
+          if (cachedU[index] === 255) return;
+          const g = terrazas.findIndex((x) => x.id === t.id);
+          if (g >= 0) u0[g] = cachedU[index];
+        });
+        setQuickSun(u0);
+      }
+      // 2) Calcular solo los que faltan (o todos si no hay caché) y perseguir.
+      const missing = targets.filter((t, index) => cachedU[index] === 255);
+      if (missing.length > 0) {
+        let partial: Uint8Array;
+        try {
+          partial = huellas
+            ? await (api as any).quickForHuellas(missing, selectedDate.toISOString())
+            : await api.facadeQuickFor(missing, selectedDate.toISOString());
+        } catch {
+          partial = await api.facadeQuickFor(missing, selectedDate.toISOString());
+        }
+        if (seq !== quickSeqRef.current) return;
+        missing.forEach((t, index) => {
+          const g = terrazas.findIndex((x) => x.id === t.id);
+          if (g < 0) return;
+          u0[g] = partial[index];
+          qCache[quickCacheKey(t.id, slot)] = partial[index];
+        });
+        writeQuickCache(qCache);
+        setQuickSun(u0);
+      }
     }, 100);
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
   }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, huellas, setQuickSun]);
