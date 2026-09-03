@@ -11,6 +11,7 @@ import { MeNowBadge } from './components/MeNowBadge';
 import { SolarProgressBadge } from './components/SolarProgressBadge';
 import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
+import { loadHuellas } from './lib/huellas';
 import { fetchBuildings } from './lib/buildings';
 import { shadowsApi } from './workers/shadowsClient';
 import type { Terraza } from './lib/types';
@@ -164,13 +165,23 @@ export function App() {
     return null;
   }
 
-  // 1) Cargar terrazas. Los edificios se descargan por zona, no todo Madrid.
+  // 1) Cargar terrazas + huellas en paralelo. Los edificios se descargan por zona.
   useEffect(() => {
     (async () => {
-      const ts = await loadTerrazas();
+      const [ts, hs] = await Promise.all([loadTerrazas(), loadHuellas()]);
+      useAppStore.getState().setHuellas(hs);
       setTerrazas(ts);
     })();
   }, [setTerrazas]);
+
+  // 1b) Registrar huellas en el worker cuando esten disponibles (motor v2).
+  const huellas = useAppStore((s) => s.huellas);
+  useEffect(() => {
+    if (!huellas || terrazas.length === 0) return;
+    shadowsApi().setHuellas(huellas as any).catch((err) =>
+      console.warn('[solmad] No se pudieron registrar huellas:', err)
+    );
+  }, [huellas, terrazas]);
 
   // 2) En cuanto hay terrazas, inicializa workers. Sin edificios no se pinta sol:
   // los marcadores quedan pendientes hasta que llegue al menos un tile de la zona.
@@ -241,8 +252,9 @@ export function App() {
     return uniqueById([...(selected ? [selected] : []), ...nearby, ...fallback]).slice(0, QUICK_LIMIT);
   };
 
-  // 4) Primera respuesta visible: fachada del edificio mas cercano.
-  //    Es el estado principal para el usuario: rapido, estable y conservador.
+  // 4) Primera respuesta visible. MOTOR v2: si hay huellas registradas,
+  //    quickForHuellas evalua 4 muestras por terraza (>=25% soleada = sol).
+  //    Fallback: fachada del edificio mas cercano (v1).
   useEffect(() => {
     if (!buildingsLoaded || terrazas.length === 0) return;
     const targets = computeTargets();
@@ -252,7 +264,14 @@ export function App() {
     if (quickDebRef.current) clearTimeout(quickDebRef.current);
     quickDebRef.current = window.setTimeout(async () => {
       const api = shadowsApi();
-      const partial = await api.facadeQuickFor(targets, selectedDate.toISOString());
+      let partial: Uint8Array;
+      try {
+        partial = huellas
+          ? await (api as any).quickForHuellas(targets, selectedDate.toISOString())
+          : await api.facadeQuickFor(targets, selectedDate.toISOString());
+      } catch {
+        partial = await api.facadeQuickFor(targets, selectedDate.toISOString());
+      }
       if (seq !== quickSeqRef.current) return;
       const u = new Uint8Array(terrazas.length);
       u.fill(255);
@@ -263,7 +282,7 @@ export function App() {
       setQuickSun(u);
     }, 100);
     return () => { if (quickDebRef.current) clearTimeout(quickDebRef.current); };
-  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, setQuickSun]);
+  }, [selectedDate, terrazas, buildingsLoaded, buildings, visibleIds, selectedId, userLocation, huellas, setQuickSun]);
 
   // 5) Refinamiento acotado en background. No calcula toda la ciudad ni bloquea la UI.
   useEffect(() => {

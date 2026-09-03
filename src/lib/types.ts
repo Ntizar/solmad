@@ -20,12 +20,20 @@ export interface Terraza {
 }
 
 export interface SunState {
-  sunNow: boolean;          // sol directo ahora
+  sunNow: boolean;          // sol directo ahora (>=25% de la huella soleada)
+  sunNowPct?: number;       // 0..100 % de la huella soleada ahora (motor v2)
   altitudeDeg: number;      // del sol en este momento
   azimuthDeg: number;       // 0 = N, 90 = E
   minutesLeft: number;      // minutos de sol restantes hoy en esta terraza
   directMinutes: number;    // minutos continuos de sol directo desde la hora elegida
   ribbon?: number[];        // 48 medias horas, 0=sombra,1=sol,2=noche (lazy)
+}
+
+/** Huella de terraza sobre la acera (fase 1). */
+export interface Huella {
+  ring: [number, number][];          // 4 esquinas WGS84
+  samples: [number, number][];       // centros de cuadrantes (grid 2x2)
+  orientacion?: number;              // grados del eje de la via
 }
 
 export interface BuildingPoly {
