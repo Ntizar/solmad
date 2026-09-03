@@ -263,14 +263,20 @@ export function MapView() {
       for (const building of visibleBuildings) {
         const poly = shadowLatLngs(building, az, alt);
         if (!poly) continue;
+        // Sombra más visible cuando el sol está bajo (sombra larga) y más
+        // translúcida al mediodía. Con las alturas reales del Ayto. la longitud
+        // de la sombra ahora es fiel: edificios altos proyectan más.
+        const opacity = Math.max(0.14, Math.min(0.38, 0.34 - alt / 180));
         L.polygon(poly, {
           renderer: canvasRenderer,
           pane: 'solmad-building-shadows',
           interactive: false,
-          stroke: false,
+          stroke: true,
+          weight: 1,
+          color: '#1a2838',
           fillColor: '#223044',
-          fillOpacity: Math.max(0.08, Math.min(0.22, 0.28 - alt / 180))
-        }).addTo(layer);
+          fillOpacity: opacity
+        }).setStyle({ opacity: Math.min(0.5, opacity + 0.1) }).addTo(layer);
         drawn += 1;
       }
     };
