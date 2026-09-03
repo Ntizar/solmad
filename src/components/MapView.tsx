@@ -36,6 +36,16 @@ function ringTouchesBounds(ring: BuildingPoly['ring'], bounds: L.LatLngBounds) {
   return ring.some(([lng, lat]) => bounds.contains([lat, lng]));
 }
 
+/** Distancia en metros del centroide de un anillo a un punto (aprox planar Madrid). */
+function centroidDist(ring: BuildingPoly['ring'], point: L.LatLng): number {
+  let sx = 0, sy = 0;
+  for (const [lng, lat] of ring) { sx += lng; sy += lat; }
+  const clat = sy / ring.length, clng = sx / ring.length;
+  const dLat = (clat - point.lat) * 111320;
+  const dLng = (clng - point.lng) * 111320 * Math.cos(point.lat * Math.PI / 180);
+  return Math.hypot(dLat, dLng);
+}
+
 function shadowLatLngs(building: BuildingPoly, azDeg: number, altDeg: number): L.LatLngExpression[] | null {
   if (altDeg <= 1) return null;
   const ring = building.ring;
@@ -241,7 +251,7 @@ export function MapView() {
     if (!map || !layer) return;
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    const MAX_DRAW = isMobile ? 350 : 1400;
+    const MAX_DRAW = isMobile ? 220 : 900;
     const MIN_ZOOM_FOR_SHADOWS = isMobile ? 14 : 12;
     let rafId = 0;
     let pending = false;
@@ -258,25 +268,32 @@ export function MapView() {
       if (alt <= 1) return;
 
       const bounds = map.getBounds().pad(isMobile ? 0.10 : 0.30);
-      const visibleBuildings = buildings.filter((building) => ringTouchesBounds(building.ring, bounds)).slice(0, MAX_DRAW);
+      // Solo edificios cercanos al centro: las sombras lejanas se amontonan.
+      // A sol bajo (21:00) las sombras son larguísimas y saturan si no se limita.
+      const centerLatLng = L.latLng(center.lat, center.lng);
+      const maxDist = isMobile ? 260 : 420; // metros
+      const visibleBuildings = buildings
+        .filter((b) => ringTouchesBounds(b.ring, bounds))
+        .map((b) => ({ b, d: centroidDist(b.ring, centerLatLng) }))
+        .filter((x) => x.d < maxDist)
+        .sort((a, b2) => a.d - b2.d)
+        .slice(0, MAX_DRAW);
       let drawn = 0;
-      for (const building of visibleBuildings) {
+      for (const { b: building, d } of visibleBuildings) {
         const poly = shadowLatLngs(building, az, alt);
         if (!poly) continue;
-        // Sombra más visible cuando el sol está bajo (sombra larga) y más
-        // translúcida al mediodía. Con las alturas reales del Ayto. la longitud
-        // de la sombra ahora es fiel: edificios altos proyectan más.
-        const opacity = Math.max(0.14, Math.min(0.38, 0.34 - alt / 180));
+        // Opacidad: mucho más sutil a sol bajo (sombra larga) y más cerca del
+        // centro (con mayor impacto). Sin borde negro (evita la maraña).
+        const duskFactor = Math.max(0, Math.min(1, (alt - 2) / 20)); // 0 al atardecer, 1 mediodía
+        const opacity = 0.06 + 0.16 * duskFactor * (1 - d / maxDist);
         L.polygon(poly, {
           renderer: canvasRenderer,
           pane: 'solmad-building-shadows',
           interactive: false,
-          stroke: true,
-          weight: 1,
-          color: '#1a2838',
-          fillColor: '#223044',
+          stroke: false,
+          fillColor: '#2c3a4a',
           fillOpacity: opacity
-        }).setStyle({ opacity: Math.min(0.5, opacity + 0.1) }).addTo(layer);
+        }).addTo(layer);
         drawn += 1;
       }
     };
