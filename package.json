@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "prepare:data": "node scripts/prepare-data.mjs",
+    "prepare:huellas": "node scripts/prepare-huellas.mjs",
     "precompute:sun": "node scripts/precompute-sun.mjs",
-    "dev": "npm run prepare:data && npm run precompute:sun && vite",
+    "dev": "npm run prepare:data && npm run prepare:huellas && npm run precompute:sun && vite",
     "build": "npm run prepare:data && npm run precompute:sun && tsc -b && vite build",
     "preview": "vite preview"
   },

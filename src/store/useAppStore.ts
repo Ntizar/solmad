@@ -18,6 +18,7 @@ interface SolarProgress {
 interface State {
   terrazas: Terraza[];
   buildings: BuildingPoly[];
+  huellas: Record<number, import('../lib/types').Huella> | null; // fase 1: huellas en acera
   // Mapa id->estado solar (full); y estado rápido por índice (sólo sunNow)
   sunStates: Map<number, SunState>;
   quickSun: Uint8Array | null;
@@ -39,6 +40,7 @@ interface State {
   // setters
   setTerrazas: (t: Terraza[]) => void;
   setBuildings: (b: BuildingPoly[]) => void;
+  setHuellas: (h: Record<number, import('../lib/types').Huella> | null) => void;
   setDate: (d: Date, live?: boolean) => void;
   setSelectedId: (id: number | null) => void;
   setHoveredId: (id: number | null) => void;
@@ -64,6 +66,7 @@ interface State {
 export const useAppStore = create<State>((set) => ({
   terrazas: [],
   buildings: [],
+  huellas: null,
   sunStates: new Map(),
   quickSun: null,
   ribbonCache: new Map(),
@@ -77,12 +80,13 @@ export const useAppStore = create<State>((set) => ({
   selectedId: null,
   hoveredId: null,
   filters: { distrito: null, query: '', minHours: 0, onlyOpenNow: true },
-  introDone: false,
+  introDone: new URLSearchParams(window.location.search).has('nointro'),
   buildingsLoaded: false,
   userLocation: null,
   geoStatus: 'idle',
   setTerrazas: (terrazas) => set({ terrazas }),
   setBuildings: (buildings) => set({ buildings }),
+  setHuellas: (huellas) => set({ huellas }),
   setDate: (d, live = false) => set({ selectedDate: d, isLive: live }),
   setSelectedId: (id) => set({ selectedId: id }),
   setHoveredId: (id) => set({ hoveredId: id }),

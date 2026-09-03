@@ -14,6 +14,8 @@ function mPerDegLng(lat: number) {
 
 interface Seg { ax: number; ay: number; bx: number; by: number; h: number; tag: number; }
 interface NearestSeg { seg: Seg; dist: number; px: number; py: number; }
+/** Huella de terraza: anillo WGS84 + muestras interiores (grid 2x2). */
+interface Huella { ring: [number, number][]; samples: [number, number][]; }
 
 class SegIndex {
   cell = 60;
@@ -112,6 +114,7 @@ class SegIndex {
 }
 
 let index: SegIndex | null = null;
+let huellas: Map<number, Huella> | null = null;
 
 function closestPointOnSeg(px: number, py: number, s: Seg): { dist: number; px: number; py: number } {
   const vx = s.bx - s.ax, vy = s.by - s.ay;
@@ -234,6 +237,110 @@ const api = {
     index = new SegIndex();
     index.build(buildings, originLng, originLat);
     return { segments: [...index.grid.values()].reduce((a, b) => a + b.length, 0) };
+  },
+
+  /** Registra las huellas (fase 1). Cada huella trae ring + samples grid 2x2. */
+  setHuellas(data: Record<string, Huella>) {
+    huellas = new Map();
+    for (const [id, h] of Object.entries(data)) {
+      if (h?.samples?.length) huellas.set(Number(id), h);
+    }
+    return { count: huellas.size };
+  },
+
+  /**
+   * MOTOR v2: como computeFor pero por huella. Para cada terraza evalúa sus
+   * 4 muestras y devuelve sunNow como % de superficie soleada (sunNowPct
+   * 0..100). sunNow sigue siendo booleano para compatibilidad: true si >=25%.
+   */
+  computeForHuellas(terrazas: Terraza[], whenIso: string): SunState[] {
+    const when = new Date(whenIso);
+    const results: SunState[] = new Array(terrazas.length);
+    const idx = index;
+
+    // slots de tiempo compartidos (posicion solar varia <0.1deg en Madrid)
+    const ref = terrazas[0];
+    const times = ref ? SunCalc.getTimes(when, ref.lat, ref.lng) : null;
+    const sunset = times?.sunset;
+    const slots: Array<{ az: number; al: number }> = [];
+    if (sunset && when < sunset && ref) {
+      const end = sunset.getTime();
+      for (let ts = when.getTime(); ts < end; ts += STEP_MIN * 60_000) {
+        slots.push(sunPos(new Date(ts), ref.lat, ref.lng));
+      }
+    }
+
+    for (let i = 0; i < terrazas.length; i++) {
+      const t = terrazas[i];
+      const h = huellas?.get(t.id);
+      const pts: [number, number][] = h
+        ? h.samples.map((s) => (idx ? idx.toM(s[0], s[1]) : [0, 0]) as [number, number])
+        : [[0, 0]];
+
+      const { az: azNow, al: altNow } = sunPos(when, t.lat, t.lng);
+
+      // % de superficie soleada ahora
+      let litNow = 0;
+      if (altNow > 0) {
+        if (!idx || idx.grid.size === 0) {
+          litNow = 3; // pendiente (sin edificios)
+        } else {
+          for (const p of pts) if (isSunlit(p[0], p[1], azNow, altNow)) litNow++;
+          litNow = Math.round((litNow / pts.length) * 100);
+        }
+      }
+      const sunNow = litNow === 3 ? false : litNow >= 25;
+
+      // minutos restantes y continuos, con el umbral del 25% de la huella
+      let minutesLeft = 0;
+      let directMinutes = 0;
+      let directOpen = sunNow;
+      for (const s of slots) {
+        if (s.al <= 0) continue;
+        let lit = 0;
+        if (idx && idx.grid.size > 0) {
+          for (const p of pts) if (isSunlit(p[0], p[1], s.az, s.al)) lit++;
+          lit = Math.round((lit / pts.length) * 100);
+        }
+        const soleada = lit >= 25;
+        if (soleada) minutesLeft += STEP_MIN;
+        if (directOpen && soleada) directMinutes += STEP_MIN;
+        else directOpen = false;
+      }
+
+      results[i] = {
+        sunNow,
+        sunNowPct: litNow === 3 ? undefined : litNow,
+        altitudeDeg: altNow,
+        azimuthDeg: azNow,
+        minutesLeft,
+        directMinutes,
+      };
+    }
+    return results;
+  },
+
+  /** Quick masivo por huella: solo el % ahora. Estados 0=sombra 1=sol 2=noche 3=pendiente. */
+  quickForHuellas(terrazas: Terraza[], whenIso: string): Uint8Array {
+    const when = new Date(whenIso);
+    const out = new Uint8Array(terrazas.length);
+    const idx = index;
+    const noBuildings = !idx || idx.grid.size === 0;
+    for (let i = 0; i < terrazas.length; i++) {
+      const t = terrazas[i];
+      const { az, al } = sunPos(when, t.lat, t.lng);
+      if (al <= 0) { out[i] = 2; continue; }
+      if (noBuildings) { out[i] = 3; continue; }
+      const h = huellas?.get(t.id);
+      if (!h) { out[i] = 3; continue; }
+      let lit = 0;
+      for (const s of h.samples) {
+        const [ox, oy] = idx!.toM(s[0], s[1]);
+        if (isSunlit(ox, oy, az, al)) lit++;
+      }
+      out[i] = lit / h.samples.length >= 0.25 ? 1 : 0;
+    }
+    return out;
   },
 
   /** Bulk: estado actual + minutos restantes hasta el ocaso (sin ribbon, lazy). */
