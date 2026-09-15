@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import proj4 from 'proj4';
+import { readTile } from './lib/tiles.mjs';
 
 // FASE 1 - Huellas de terrazas sobre la acera.
 // Lee data/terrazas.json (crudo Ayuntamiento, EPSG:25830) y data/vias-madrid.json
@@ -19,6 +20,7 @@ const ANCHO_DEF = 2.5;       // m, ancho tipico de terraza lineal (ordenacion Ma
 const ANCHO_MAX = 4.0;       // m, techo visual del ancho
 const RETROCESO_M = 0.5;     // m, entre borde de calzada y borde de terraza
 const SEMIANCHO_CALZADA = 4.5; // m, mitad de calzada tipica
+const FACADE_RETROCESO_M = 0.4; // m, separacion entre fachada y borde de la huella
 const GRID = 2;              // muestras por lado (2x2 = 4 por huella)
 
 const M_LAT = 111320;
@@ -127,8 +129,14 @@ function huellaDe(t) {
   }
   const longitud = sup > 0 ? sup / ancho : 4;
 
-  // offset desde el eje de la via hacia la acera
-  const offset = SEMIANCHO_CALZADA + RETROCESO_M;
+  // Offset desde el eje de la via hacia la acera. El punto del censo esta en la
+  // FACHADA, asi que su distancia al eje nos dice donde empieza el edificio:
+  // ponemos la huella pegada a la fachada (retroceso 0,4 m) en lugar de a un
+  // fijo de 5 m. En calles estrechas ese fijo metia la terraza DENTRO del
+  // edificio y quedaba en sombra permanente (350 de 6.154 terrazas).
+  const dCenso = Math.hypot(ox - best.qx, oy - best.qy);
+  const offsetMax = SEMIANCHO_CALZADA + RETROCESO_M;
+  const offset = Math.max(ancho / 2 + 0.2, Math.min(offsetMax, dCenso - ancho / 2 - FACADE_RETROCESO_M));
   const cx = best.qx + nx * offset * lado;
   const cy = best.qy + ny * offset * lado;
   const hl = longitud / 2, ha = ancho / 2;
@@ -214,7 +222,64 @@ for (let pass = 0; pass < 12; pass++) {
   }
   if (movidos === 0) break;
 }
-console.log('[huellas] ' + ok + ' huellas, ' + sinVia + ' sin via cercana, ' + separadas + ' separadas de solape -> ' + OUT);
+// ---- RESCATE: huellas cuyas 4 muestras caen DENTRO de un edificio ----
+// Con el offset adaptativo deberian ser pocas, pero quedan las de plazas y
+// esquinas raras. Buscamos el desplazamiento minimo (16 direcciones, pasos de
+// 0,5 m hasta 8 m) que saque las 4 muestras a la calle. Si no hay, se deja igual.
+const TILE_DEG = 0.012;
+const tilesBld = new Map();
+function edificiosCerca(lat, lng) {
+  const row = Math.floor(lat / TILE_DEG), col = Math.floor(lng / TILE_DEG);
+  const acc = [];
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    const k = `${row + dr}_${col + dc}`;
+    if (!tilesBld.has(k)) {
+      try { tilesBld.set(k, readTile(resolve(ROOT, 'public', 'buildings', k + '.bin'))); }
+      catch { tilesBld.set(k, []); }
+    }
+    acc.push(...tilesBld.get(k));
+  }
+  return acc;
+}
+function dentroDeEdificio(lng, lat, blds) {
+  for (const b of blds) {
+    const ring = b.ring;
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+let rescatadas = 0, irrescatables = 0;
+for (const k of keys) {
+  const h = out[k];
+  const [clng, clat] = cenRing(h.ring);
+  const blds = edificiosCerca(clat, clng);
+  if (!blds.length) continue;
+  const todasDentro = h.samples.every(([lng, lat]) => dentroDeEdificio(lng, lat, blds));
+  if (!todasDentro) continue;
+  let elegido = null;
+  for (let r = 0.5; r <= 8.001 && !elegido; r += 0.5) {
+    for (let a = 0; a < 16; a++) {
+      const ang = (a * Math.PI) / 8;
+      const dx = Math.cos(ang) * r, dy = Math.sin(ang) * r;
+      const ok2 = h.samples.every(([lng, lat]) => !dentroDeEdificio(lng + dx / M_LNG, lat + dy / M_LAT, blds));
+      if (ok2) { elegido = { dx, dy }; break; }
+    }
+  }
+  if (elegido) {
+    h.ring = h.ring.map((p) => [r6(p[0] + elegido.dx / M_LNG), r6(p[1] + elegido.dy / M_LAT)]);
+    h.samples = h.samples.map((p) => [r6(p[0] + elegido.dx / M_LNG), r6(p[1] + elegido.dy / M_LAT)]);
+    out[k] = h;
+    rescatadas++;
+  } else {
+    irrescatables++;
+  }
+}
+console.log('[huellas] ' + ok + ' huellas, ' + sinVia + ' sin via cercana, ' + separadas + ' separadas de solape, ' + rescatadas + ' rescatadas de edificio, ' + irrescatables + ' sin salida -> ' + OUT);
 
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out));

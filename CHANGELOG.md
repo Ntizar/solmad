@@ -20,6 +20,7 @@ El mapa ya no espera a nada para decirte dónde hay sol.
 - Atribución actualizada a los datos realmente usados: **Ayto. de Madrid (CC BY 4.0) + IGN (CC BY 4.0)**.
 
 ### Corregido
+- **Huellas de terraza dentro de edificios**: el offset a la acera era fijo (5 m desde el eje de la vía) mientras el punto del censo ya está en la fachada, así que en calles estrechas la huella caía DENTRO del edificio y la terraza quedaba en sombra permanente. Medido: **350 de 6.154 terrazas (5,7%)** con sus 4 muestras dentro de un edificio. Ahora el offset se calcula desde la fachada real (retroceso 0,4 m) + una pasada de rescate que desplaza el mínimo necesario (16 direcciones, pasos de 0,5 m) las que siguen dentro → **bajan a 3**. Efecto medible en la matriz: sol diario 22,4% → **23,2%**, pico a las 14:00 68,9% → **71,1%**, plazas/peatonales al mediodía 48,6% → **56,5%**.
 - Paginación del servicio de alturas del Ayto.: el WAF rechaza URLs largas (todo va por POST) y `DISTRITO` no es un campo válido (causaba 400 determinista). Descarga por `resultOffset` + control de huecos por `OBJECTID`: **491.252/491.252, cero huecos**.
 - Douglas-Peucker colapsaba los anillos cerrados a 2 puntos (el segmento inicial medía 0). Ahora se simplifica el anillo abierto y se cierra después.
 - El reset por cambio de hora ya no borra el pintado de la matriz.
