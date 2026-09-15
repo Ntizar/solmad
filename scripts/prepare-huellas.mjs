@@ -159,6 +159,63 @@ for (const t of abiertas) {
   ok++;
 }
 
+// ---- SEPARAR terrazas apiladas (dos o más en el mismo sitio) ----
+// Si dos huellas se solapan, desplazamos la segunda a lo largo de su eje
+// de la vía (norte-sur del segmento) hasta que no pisen. No cambiamos el
+// offset a la acera ni el tamaño: solo separamos las que coinciden.
+const keys = Object.keys(out);
+function cenRing(ring) {
+  const sx = ring.reduce((a, p) => a + p[0], 0), sy = ring.reduce((a, p) => a + p[1], 0);
+  return [sx / ring.length, sy / ring.length];
+}
+function orientDeg(a) { // devuelve ux,uy en metros a partir del angulo de orientacion
+  const rad = (Number(a) || 0) * Math.PI / 180;
+  return [Math.cos(rad), Math.sin(rad)];
+}
+function overlapM(ringA, ringB) {
+  // Solo tratamos como solape cuando los CENTROS están muy cerca (< 3.5 m):
+  // eso es "una encima de otra". Las mesas contiguas a 3-6 m son legítimas.
+  const a = metRing(ringA), b = metRing(ringB);
+  const ca = [a.reduce((s, p) => s + p[0], 0) / a.length, a.reduce((s, p) => s + p[1], 0) / a.length];
+  const cb = [b.reduce((s, p) => s + p[0], 0) / b.length, b.reduce((s, p) => s + p[1], 0) / b.length];
+  const d = Math.hypot(ca[0] - cb[0], ca[1] - cb[1]);
+  // Además, que realmente se intersecten los polígonos.
+  const int = pointInPoly(a[0], b) || pointInPoly(a[1], b) || pointInPoly(a[2], b) || pointInPoly(b[0], a);
+  return d < 3.5 && int;
+}
+function metRing(ring) {
+  return ring.map((p) => [(p[0] - ORIGIN.lng) * M_LNG, (p[1] - ORIGIN.lat) * M_LAT]);
+}
+function pointInPoly(pt, poly) {
+  let inside = false; const n = poly.length; let j = n - 1;
+  for (let i = 0; i < n; i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) inside = !inside;
+    j = i;
+  }
+  return inside;
+}
+let separadas = 0;
+for (let pass = 0; pass < 12; pass++) {
+  let movidos = 0;
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = out[keys[i]], b = out[keys[j]];
+      if (!overlapM(a.ring, b.ring)) continue;
+      const [ux, uy] = orientDeg(a.orientacion ?? 0);
+      // desplazar b 1 m a lo largo del eje (dir. alterna)
+      const dx = ux * 1.0 * ((i + j) % 2 ? 1 : -1);
+      const dy = uy * 1.0 * ((i + j) % 2 ? 1 : -1);
+      b.ring = b.ring.map((p) => [r6(p[0] + dx / M_LNG), r6(p[1] + dy / M_LAT)]);
+      b.samples = b.samples.map((p) => [r6(p[0] + dx / M_LNG), r6(p[1] + dy / M_LAT)]);
+      out[keys[j]] = b;
+      movidos++; separadas++;
+    }
+  }
+  if (movidos === 0) break;
+}
+console.log('[huellas] ' + ok + ' huellas, ' + sinVia + ' sin via cercana, ' + separadas + ' separadas de solape -> ' + OUT);
+
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(out));
-console.log('[huellas] ' + ok + ' huellas, ' + sinVia + ' sin via cercana -> ' + OUT);
+console.log('[huellas] Escrito -> ' + OUT);
