@@ -1,3 +1,5 @@
+import { assetUrl } from './assets';
+
 // Lee public/solar-day.json (precalculado por GitHub Action diaria) y expone helpers.
 // Si no existe o falla, devuelve null y la app sigue funcionando con cálculos en vivo.
 
@@ -32,7 +34,7 @@ export async function loadSolarDay(): Promise<SolarPrecomputed | null> {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const res = await fetch('/solar-day.json', { cache: 'force-cache' });
+      const res = await fetch(assetUrl('solar-day.json'), { cache: 'force-cache' });
       if (!res.ok) { cache = null; return null; }
       const data = (await res.json()) as SolarPrecomputed;
       if (!data?.days?.length) { cache = null; return null; }

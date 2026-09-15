@@ -1,7 +1,8 @@
 import type { Terraza } from './types';
+import { assetUrl } from './assets';
 
 export async function loadTerrazas(): Promise<Terraza[]> {
-  const res = await fetch('/terrazas.min.json');
+  const res = await fetch(assetUrl('terrazas.min.json'));
   if (!res.ok) throw new Error('No se pudo cargar terrazas.min.json. Ejecuta `npm run prepare:data`.');
   return (await res.json()) as Terraza[];
 }

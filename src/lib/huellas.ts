@@ -1,4 +1,5 @@
 import type { Huella } from './types';
+import { assetUrl } from './assets';
 
 /**
  * Carga las huellas de terrazas (fase 1). Archivo generado por
@@ -7,7 +8,7 @@ import type { Huella } from './types';
  */
 export async function loadHuellas(): Promise<Record<number, Huella> | null> {
   try {
-    const res = await fetch('/terrazas-huellas.json');
+    const res = await fetch(assetUrl('terrazas-huellas.json'));
     if (!res.ok) return null;
     const raw = (await res.json()) as Record<string, Huella>;
     const out: Record<number, Huella> = {};

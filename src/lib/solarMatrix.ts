@@ -13,8 +13,10 @@
 //
 // Estados: 0=sombra · 1=sol · 2=noche · 3=pendiente (sin datos de edificios)
 
-export const MATRIX_URL = '/solar-matrix.bin';
-export const MATRIX_META_URL = '/solar-matrix.meta.json';
+import { assetUrl } from './assets';
+
+export const MATRIX_URL = assetUrl('solar-matrix.bin');
+export const MATRIX_META_URL = assetUrl('solar-matrix.meta.json');
 
 export interface SolarMatrix {
   version: number;

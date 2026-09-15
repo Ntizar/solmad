@@ -13,9 +13,10 @@
 //   u32 'SMBD' | u8 version | u8 flags | u16 reservado | f64 originLng | f64 originLat
 //   u32 nEdificios | por edificio: u8 altura_m, u8 nPuntos, nPuntos x (u16 x_dm, u16 y_dm)
 import type { BuildingPoly } from './types';
+import { assetUrl } from './assets';
 
 export const TILE_SIZE_DEG = 0.012; // misma rejilla que el generador
-export const MANIFEST_URL = '/buildings/manifest.json';
+export const MANIFEST_URL = assetUrl('buildings/manifest.json');
 const M_PER_DEG_LAT = 111320;
 const mPerDegLng = (lat: number) => M_PER_DEG_LAT * Math.cos((lat * Math.PI) / 180);
 
@@ -95,7 +96,7 @@ export async function fetchStaticTile(row: number, col: number): Promise<Buildin
   if (!manifest) return null;
   if (!manifest.tiles[tileKey(row, col)]) return null;
   try {
-    const res = await fetch(`/buildings/${tileKey(row, col)}.bin`);
+    const res = await fetch(assetUrl(`buildings/${tileKey(row, col)}.bin`));
     if (!res.ok) return null;
     return decodeTileBuffer(await res.arrayBuffer());
   } catch {
