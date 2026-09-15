@@ -9,6 +9,12 @@
     "precompute:sun": "node scripts/precompute-sun.mjs",
     "precompute:matrix": "node scripts/precompute-shadows.mjs --budget 900",
     "datos:edificios": "node scripts/fetch-buildings-madrid.mjs && node scripts/build-buildings-tiles.mjs",
+    "fetch:vias": "node scripts/fetch-vias.mjs",
+    "qa:huellas": "node scripts/qa-huellas-edificios.mjs",
+    "qa:huellas-geometria": "node scripts/qa-huellas-geometria.mjs",
+    "verify:matrix": "node scripts/verify-matrix.mjs",
+    "verificar:web": "python scripts/verificar-web.py",
+    "datos:todo": "npm run datos:edificios && npm run prepare:data && npm run prepare:huellas && npm run precompute:sun && npm run precompute:matrix",
     "dev": "npm run prepare:data && npm run prepare:huellas && npm run precompute:sun && vite",
     "build": "npm run prepare:data && npm run precompute:sun && (npm run precompute:matrix || echo 'aviso: matriz solar no regenerada, se usa la versionada') && tsc -b && vite build",
     "preview": "vite preview"

@@ -5,6 +5,9 @@
 El mapa ya no espera a nada para decirte dónde hay sol.
 
 ### Añadido
+- **Pipeline reproducible y verificable**: `npm run datos:todo` encadena edificios → censo → viario → huellas → sol → matriz. Nuevo `npm run fetch:vias` (risca el viario de Overpass con UA y reintentos; sin él no se pueden regenerar las huellas) y herramientas de comprobación versionadas en `scripts/`: `verify:matrix`, `qa:huellas`, `qa:huellas-geometria` y `verificar:web`.
+- **`verificar:web` sin dependencias**: verifica la web en un navegador real (headless) por DevTools Protocol con un cliente WebSocket escrito sobre la librería estándar de Python — no hace falta instalar nada. Comprueba recursos descargados, contador, píxeles del canvas y excepciones JS; devuelve 0/2/1, listo para CI.
+- **README reescrito** con puesta en marcha desde cero, qué ficheros están versionados y cuáles se generan, pipeline, verificación y despliegue (GitHub Pages + Vercel + automatización diaria).
 - **Matriz solar precalculada** (`public/solar-matrix.bin`, formato `SMSH v1`): estado sol/sombra/noche de las **6.202 terrazas** del censo en las **48 franjas de 30 min** del día, empaquetado a **2 bits por franja** → **97 KB** en total. El cliente lo lee y colorea el mapa con *lookup* O(1), sin raycasting y sin edificios.
 - **Tileset de edificios estático** (`public/buildings/*.bin`, formato `SMBD v1`): **491.252 edificios** descargados de la cartografía del Ayto. (huella + **altura oficial**), **464.564 válidos** tras filtrar ruido, simplificados a ~7 puntos (tolerancia 1,2 m) en **341 tiles** de ~1,3 km → **13 MB**, 29 bytes por edificio.
 - **Contador instantáneo** en el mapa: «X de 6.202 terrazas al sol · HH:MM», calculado desde la matriz.
