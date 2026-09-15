@@ -80,7 +80,7 @@ async function ensurePullRequest(branch: string, contribution: Contribution) {
       title: `Aporte SolMad: ${contribution.terraceName}`,
       head: branch,
       base: BRANCH,
-      body: `Revisar aporte comunitario antes de mezclar.\n\nAviso para: ${REVIEW_EMAIL}\n\nTerraza: ${contribution.terraceName}\nID: ${contribution.terraceId}\nUsuario: ${contribution.contributorName}\nMarca: ${contribution.beerBrand}\nPrecio: ${contribution.price} EUR\nSol observado: ${contribution.sunFrom || '?'} - ${contribution.sunTo || '?'}\nComentario: ${contribution.comment || '-'}\n`
+      body: `Revisar aporte comunitario antes de mezclar.\n\nTerraza: ${contribution.terraceName}\nID: ${contribution.terraceId}\nUsuario: ${contribution.contributorName}\nMarca: ${contribution.beerBrand}\nPrecio: ${contribution.price} EUR\nSol observado: ${contribution.sunFrom || '?'} - ${contribution.sunTo || '?'}\nComentario: ${contribution.comment || '-'}\n`
     })
   });
   if (!created.res.ok) throw new Error('No se pudo crear PR de revision');
