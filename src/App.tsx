@@ -9,9 +9,11 @@ import { FloatingTimeControl } from './components/FloatingTimeControl';
 import { LocationButton } from './components/LocationButton';
 import { MeNowBadge } from './components/MeNowBadge';
 import { SolarProgressBadge } from './components/SolarProgressBadge';
+import { SunCounterBadge } from './components/SunCounterBadge';
 import { useAppStore } from './store/useAppStore';
 import { loadTerrazas } from './lib/terrazas';
 import { loadHuellas } from './lib/huellas';
+import { loadSolarMatrix, statesForTerrazas, type SolarMatrix } from './lib/solarMatrix';
 import { fetchBuildings } from './lib/buildings';
 import { enrichBuildingsAlturas } from './lib/buildings';
 import { shadowsApi } from './workers/shadowsClient';
@@ -103,6 +105,8 @@ export function App() {
   const selectedDate = useAppStore((s) => s.selectedDate);
   const buildings = useAppStore((s) => s.buildings);
   const [appStarted, setAppStarted] = useState(false);
+  // Matriz solar precalculada (sol/sombra de todas las terrazas por franja).
+  const matrixRef = useRef<SolarMatrix | null>(null);
 
   const fullDebRef = useRef<number | null>(null);
   const quickDebRef = useRef<number | null>(null);
@@ -215,6 +219,12 @@ export function App() {
     );
   }, [huellas, terrazas]);
 
+  // 1c) MATRIZ PRECALCULADA (public/solar-matrix.bin): pinta las 6.200 terrazas
+  //     al instante, sin edificios ni worker. Es respuesta visual inmediata;
+  //     el motor en vivo sigue refinando por encima cuando llega su turno.
+  //     Se registra más abajo, DESPUÉS del resetSunStates: así el reset por
+  //     cambio de hora no borra el pintado de la matriz.
+
   // 2) En cuanto hay terrazas, inicializa workers. Sin edificios no se pinta sol:
   // los marcadores quedan pendientes hasta que llegue al menos un tile de la zona.
   useEffect(() => {
@@ -241,11 +251,15 @@ export function App() {
     const originLat = (south + north) / 2;
     const cancelToken = { cancelled: false };
     let partialQueue = Promise.resolve();
+    // Si los edificios vienen del tileset estático del Ayto., ya traen altura
+    // oficial: no hace falta el enriquecido extra por red.
+    let fuenteEstatica = false;
     (async () => {
       const api = shadowsApi();
       try {
         const fetched = await fetchBuildings([south, west, north, east], {
           signal: cancelToken,
+          onSource: (src) => { if (src === 'estatico') fuenteEstatica = true; },
           onProgress: (done, total) => {
             if (seq !== buildingSeqRef.current) return;
             setSolarProgress({ phase: 'buildings', done, total, message: 'Cargando edificios cercanos' });
@@ -267,6 +281,11 @@ export function App() {
         // Enriquece alturas con datos oficiales del Ayto. (CC BY 4.0), no bloqueante:
         // reindexa al final con las alturas reales para sombras 3D más fieles.
         // Bbox acotado al centro de la vista (el servicio limita a ~8000 features).
+        // Si el tileset estático ya traía altura oficial, nos lo saltamos.
+        if (fuenteEstatica) {
+          setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
+          return;
+        }
         try {
           const enrichBbox: [number, number, number, number] = [
             Math.max(south, originLat - 0.004),
@@ -309,7 +328,11 @@ export function App() {
     const targets = computeTargets();
     if (targets.length === 0) return;
     const seq = ++quickSeqRef.current;
-    setQuickSun(null);
+    // Base = matriz precalculada. Si cubre las terrazas, ya hay color pintado:
+    // no lo borramos mientras el motor en vivo se pone al día (y si la matriz
+    // cubre una terraza, el motor en vivo no la pisa: datos oficiales completos).
+    const matrixBase = matrixRef.current ? statesForTerrazas(matrixRef.current, terrazas, selectedDate) : null;
+    if (!matrixBase) setQuickSun(null);
     if (quickDebRef.current) clearTimeout(quickDebRef.current);
     quickDebRef.current = window.setTimeout(async () => {
       const api = shadowsApi();
@@ -326,6 +349,7 @@ export function App() {
       // Buffer sobre terrazas (pintado incrementalmente).
       const u0 = new Uint8Array(terrazas.length);
       u0.fill(255);
+      if (matrixBase) u0.set(matrixBase);
       if (cachedCount > 0) {
         targets.forEach((t, index) => {
           if (cachedU[index] === 255) return;
@@ -335,7 +359,12 @@ export function App() {
         setQuickSun(u0);
       }
       // 2) Calcular solo los que faltan (o todos si no hay caché) y perseguir.
-      const missing = targets.filter((t, index) => cachedU[index] === 255);
+      const missing = targets.filter((t, index) => {
+        if (cachedU[index] !== 255) return false;
+        if (!matrixBase) return true;
+        const g = terrazas.findIndex((x) => x.id === t.id);
+        return g < 0 || matrixBase[g] === 255; // ya cubierto por la matriz: no recalcular
+      });
       if (missing.length > 0) {
         let partial: Uint8Array;
         try {
@@ -418,6 +447,23 @@ export function App() {
     resetSunStates();
   }, [selectedDate, resetSunStates]);
 
+  // 6) MATRIZ PRECALCULADA: va DESPUÉS del reset para que el cambio de hora no
+  //    deje el mapa en blanco. Colorea las 6.200 terrazas en el acto (lookup
+  //    O(1) en 12 bytes por terraza), sin edificios, sin worker y sin red extra
+  //    más allá de un fichero de ~97 KB que además ya está en caché.
+  useEffect(() => {
+    if (terrazas.length === 0) return;
+    let cancel = false;
+    (async () => {
+      const matrix = matrixRef.current ?? await loadSolarMatrix();
+      if (!matrix || cancel) return;
+      matrixRef.current = matrix;
+      setQuickSun(statesForTerrazas(matrix, terrazas, selectedDate));
+      setSolarProgress({ phase: 'idle', done: 1, total: 1, message: '' });
+    })();
+    return () => { cancel = true; };
+  }, [terrazas, selectedDate, setQuickSun, setSolarProgress]);
+
   useEffect(() => {
     if (!buildingsLoaded || selectedId == null || buildings.length === 0) return;
     const terraza = terrazas.find((t) => t.id === selectedId);
@@ -461,6 +507,7 @@ export function App() {
 
           {/* UI flotante */}
           <SurpriseButton />
+          <SunCounterBadge />
           <LocationButton />
           <MeNowBadge />
           <SolarProgressBadge />
@@ -472,7 +519,8 @@ export function App() {
             {/* Créditos: hecho con amor por David Antizar — debajo de todo */}
             <div className="pointer-events-auto text-center pt-1.5 pb-1 px-2 bg-night-900/70 backdrop-blur-sm">
               <span className="text-[10px] text-paper/65 tracking-wide font-display">
-                Hecho con ♥ por <strong className="text-paper/80">David Antizar</strong> · datos OSM + Madrid Abierto
+                Hecho con ♥ por <strong className="text-paper/80">David Antizar</strong> · datos Ayto. de Madrid y IGN (CC BY 4.0)
+
               </span>
             </div>
           </div>

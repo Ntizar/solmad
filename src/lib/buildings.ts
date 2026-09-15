@@ -1,4 +1,5 @@
 import type { BuildingPoly } from './types';
+import { fetchStaticTile, staticTileExists } from './buildingsTiles';
 
 const ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -118,25 +119,38 @@ async function postOverpass(endpoint: string, bbox: [number, number, number, num
   }
 }
 
-async function fetchTile(bbox: [number, number, number, number]) {
+/**
+ * Datos de un tile: primero el fichero estático del Ayto. (instantáneo, sin rate
+ * limit y con alturas oficiales). Solo si no existe (fuera del municipio o
+ * manifest caído) se va a Overpass en vivo.
+ */
+async function fetchTile(row: number, col: number, bbox: [number, number, number, number]) {
+  try {
+    if (await staticTileExists(row, col)) {
+      const estatico = await fetchStaticTile(row, col);
+      if (estatico && estatico.length) return { data: estatico, source: 'estatico' as const };
+    }
+  } catch { /* seguimos con Overpass */ }
   let lastError: unknown = null;
   for (const endpoint of ENDPOINTS) {
     try {
       const json = await postOverpass(endpoint, bbox);
-      return parseElements(json);
+      return { data: parseElements(json), source: 'overpass' as const };
     } catch (err) {
       lastError = err;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
   console.warn('[solmad] Tile de edificios omitido:', lastError);
-  return [];
+  return { data: [] as BuildingPoly[], source: 'overpass' as const };
 }
 
 interface FetchOptions {
   onProgress?: (done: number, total: number) => void;
   onPartial?: (buildings: BuildingPoly[]) => void;
   signal?: { cancelled: boolean };
+  /** Avisa del origen de los datos: 'estatico' (Ayto, instantáneo) u 'overpass' (red en vivo). */
+  onSource?: (source: 'estatico' | 'overpass') => void;
 }
 
 /**
@@ -194,11 +208,12 @@ export async function fetchBuildings(
 
   await pool(pending, TILE_CONCURRENCY, async (tile) => {
     if (opts.signal?.cancelled) return;
-    const data = await fetchTile(tile.bbox);
+    const { data, source } = await fetchTile(tile.row, tile.col, tile.bbox);
     if (opts.signal?.cancelled) return;
     cache[tileKey(tile.row, tile.col)] = { ts: Date.now(), data };
     cacheDirty = true;
     acc.push(...data);
+    opts.onSource?.(source);
     done++;
     opts.onProgress?.(done, total);
     // Emite cada tile: la estimacion de fachada debe estar disponible cuanto antes.

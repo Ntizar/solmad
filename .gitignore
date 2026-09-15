@@ -8,3 +8,5 @@ tsconfig.tsbuildinfo
 public/terrazas.min.json
 data/vias-madrid.json
 scripts/*.test-bundle.mjs
+# Descargas y caches de los scripts de datos (los datos finales viven en public/)
+scratch/
