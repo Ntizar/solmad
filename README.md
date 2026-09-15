@@ -68,7 +68,7 @@ SUN_CACHE_PATH=data/sun-cache.json
 
 `SOLMAD_GITHUB_TOKEN` debe ser un secreto de Vercel, nunca codigo cliente. Los endpoints `/api/contribute` y `/api/sun-cache` lo usan para escribir en GitHub mediante la API oficial.
 
-Los aportes de usuarios no entran directos en `main`: se guardan en la rama `solmad/review-contributions` y abren una Pull Request para revisarlos antes de mezclarlos. GitHub envia el aviso al propietario/revisores del repo;.
+Los aportes de usuarios no entran directos en `main`: se guardan en la rama `solmad/review-contributions` y abren una Pull Request para revisarlos antes de mezclarlos. GitHub envia el aviso al propietario/revisores del repo.
 
 Para sacarlo: GitHub → Settings → Developer settings → Personal access tokens → Fine-grained token. Dale acceso solo al repo `Ntizar/solmad` y permiso **Contents: Read and write**. Despues pegalo en Vercel como `SOLMAD_GITHUB_TOKEN` en Production, Preview y Development si quieres probarlo todo.
 
