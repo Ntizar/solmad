@@ -1,16 +1,16 @@
 {
   "version": 1,
-  "date": "2026-11-08",
-  "generatedAt": "2026-11-08T03:07:36.451Z",
+  "date": "2026-11-09",
+  "generatedAt": "2026-11-09T03:08:18.133Z",
   "stepMinutes": 30,
   "slotCount": 48,
   "terraces": 6202,
   "discarded": 0,
   "tz": "Europe/Madrid",
   "stats": {
-    "shadePct": 30.1,
-    "sunPct": 13.5,
-    "nightPct": 56.4,
+    "shadePct": 28.3,
+    "sunPct": 13.4,
+    "nightPct": 58.3,
     "pendingPct": 0
   },
   "buildingsTiles": 341
