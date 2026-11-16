@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "date": "2026-11-15",
-  "generatedAt": "2026-11-15T03:07:27.845Z",
+  "date": "2026-11-16",
+  "generatedAt": "2026-11-16T03:07:56.911Z",
   "stepMinutes": 30,
   "slotCount": 48,
   "terraces": 6202,
@@ -9,7 +9,7 @@
   "tz": "Europe/Madrid",
   "stats": {
     "shadePct": 27,
-    "sunPct": 12.6,
+    "sunPct": 12.5,
     "nightPct": 60.4,
     "pendingPct": 0
   },
